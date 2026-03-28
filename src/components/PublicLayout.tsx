@@ -1,5 +1,5 @@
 import { Link, Outlet, useLocation } from 'react-router-dom'
-import { Trophy, BarChart3, Calendar, Target, ShieldAlert, LogIn, Users, Swords } from 'lucide-react'
+import { Trophy, BarChart3, Calendar, Target, ShieldAlert, LogIn, Users, Swords, Ticket, Gavel } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/useAuth'
 
@@ -10,6 +10,7 @@ const navItems = [
   { path: '/artilharia', label: 'Artilharia', icon: Target },
   { path: '/suspensoes', label: 'Suspensões', icon: ShieldAlert },
   { path: '/amistosos', label: 'Amistosos', icon: Swords },
+  { path: '/bolao', label: 'Bolão', icon: Ticket },
 ]
 
 export function PublicLayout() {
@@ -42,26 +43,50 @@ export function PublicLayout() {
                 </Link>
               ))}
               {user && (
+                <>
+                  <Link
+                    to="/meu-time"
+                    className={cn(
+                      'flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
+                      location.pathname.startsWith('/meu-time')
+                        ? 'bg-gold-500/20 text-gold-400'
+                        : 'text-slate-400 hover:text-white hover:bg-navy-800'
+                    )}
+                  >
+                    <Users className="h-4 w-4" />
+                    <span className="hidden md:inline">Meu Time</span>
+                  </Link>
+                  <Link
+                    to="/arbitragem"
+                    className={cn(
+                      'flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
+                      location.pathname.startsWith('/arbitragem')
+                        ? 'bg-gold-500/20 text-gold-400'
+                        : 'text-slate-400 hover:text-white hover:bg-navy-800'
+                    )}
+                  >
+                    <Gavel className="h-4 w-4" />
+                    <span className="hidden md:inline">Arbitragem</span>
+                  </Link>
+                </>
+              )}
+              {user ? (
                 <Link
-                  to="/meu-time"
-                  className={cn(
-                    'flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
-                    location.pathname.startsWith('/meu-time')
-                      ? 'bg-gold-500/20 text-gold-400'
-                      : 'text-slate-400 hover:text-white hover:bg-navy-800'
-                  )}
+                  to="/login"
+                  className="ml-2 flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-slate-500 hover:text-white hover:bg-navy-800 transition-colors"
                 >
-                  <Users className="h-4 w-4" />
-                  <span className="hidden md:inline">Meu Time</span>
+                  <LogIn className="h-4 w-4" />
+                  <span className="hidden md:inline">Admin</span>
+                </Link>
+              ) : (
+                <Link
+                  to="/login"
+                  className="ml-2 flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-pitch-600/20 text-pitch-400 hover:bg-pitch-600/30 transition-colors"
+                >
+                  <LogIn className="h-4 w-4" />
+                  <span className="hidden md:inline">Entrar</span>
                 </Link>
               )}
-              <Link
-                to="/login"
-                className="ml-2 flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-slate-500 hover:text-white hover:bg-navy-800 transition-colors"
-              >
-                <LogIn className="h-4 w-4" />
-                <span className="hidden md:inline">Admin</span>
-              </Link>
             </nav>
           </div>
         </div>

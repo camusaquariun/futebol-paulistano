@@ -20,12 +20,17 @@ import StandingsAdmin from '@/pages/admin/StandingsAdmin'
 import TacticalBoardAdmin from '@/pages/admin/TacticalBoardAdmin'
 import FriendlyAdmin from '@/pages/admin/FriendlyAdmin'
 import RefereesAdmin from '@/pages/admin/Referees'
+import UsersAdmin from '@/pages/admin/UsersAdmin'
 import TeamProfile from '@/pages/public/TeamProfile'
 import MatchLive from '@/pages/public/MatchLive'
 import MyTeam from '@/pages/public/MyTeam'
 import PostGame from '@/pages/public/PostGame'
 import TacticalBoardPage from '@/pages/public/TacticalBoardPage'
 import Friendlies from '@/pages/public/Friendlies'
+import Pool from '@/pages/public/Pool'
+import PoolLeaderboard from '@/pages/public/PoolLeaderboard'
+import RefereeDashboard from '@/pages/public/RefereeDashboard'
+import RefereeLive from '@/pages/public/RefereeLive'
 
 export default function App() {
   return (
@@ -40,6 +45,10 @@ export default function App() {
         <Route path="/partidas/:matchId/ao-vivo" element={<MatchLive />} />
         <Route path="/partidas/:matchId/ao-vivo/:slug" element={<MatchLive />} />
         <Route path="/amistosos" element={<Friendlies />} />
+        <Route path="/bolao" element={<Pool />} />
+        <Route path="/bolao/classificacao" element={<PoolLeaderboard />} />
+        <Route path="/arbitragem" element={<RefereeDashboard />} />
+        <Route path="/arbitragem/:matchId" element={<RefereeLive />} />
         <Route path="/meu-time" element={<MyTeam />} />
         <Route path="/meu-time/jogo/:matchId" element={<PostGame />} />
         <Route path="/meu-time/prancheta" element={<TacticalBoardPage />} />
@@ -59,6 +68,7 @@ export default function App() {
         <Route path="prancheta" element={<TacticalBoardAdmin />} />
         <Route path="amistosos" element={<FriendlyAdmin />} />
         <Route path="arbitragem" element={<RefereesAdmin />} />
+        <Route path="usuarios" element={<UsersAdmin />} />
       </Route>
     </Routes>
   )

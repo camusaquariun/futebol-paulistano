@@ -229,9 +229,13 @@ export default function MatchDetail() {
       }
     }
 
+    // Calculate bolão points
+    await supabase.rpc('calculate_pool_points', { p_match_id: matchId })
+
     queryClient.invalidateQueries({ queryKey: ['suspensions'] })
     queryClient.invalidateQueries({ queryKey: ['standings'] })
     queryClient.invalidateQueries({ queryKey: ['matches'] })
+    queryClient.invalidateQueries({ queryKey: ['pool_match_bets'] })
     setSaving(false)
     navigate('/admin/partidas')
   }

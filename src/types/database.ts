@@ -33,6 +33,7 @@ export interface Player {
   id: string
   name: string
   user_id: string | null
+  photo_url: string | null
   created_at: string
 }
 
@@ -95,6 +96,8 @@ export interface Match {
   round: number
   match_state: 'pre_match' | 'first_half' | 'halftime' | 'second_half' | 'finished'
   half_start_time: string | null
+  voting_open: boolean
+  voting_closed_at: string | null
   created_at: string
   home_team?: Team
   away_team?: Team
@@ -156,4 +159,37 @@ export interface TopScorer {
   championship_id: string
   category_id: string
   goals: number
+}
+
+// Bolão (Betting Pool)
+export type PoolSeasonBetType = 'champion' | 'runner_up' | 'third_place' | 'top_scorer' | 'champion_cinema' | 'relegated_cinema'
+
+export interface PoolMatchBet {
+  id: string
+  user_id: string
+  match_id: string
+  user_email: string
+  home_score: number
+  away_score: number
+  points: number | null
+  created_at: string
+  updated_at: string
+  match?: Match
+}
+
+export interface PoolSeasonBet {
+  id: string
+  user_id: string
+  championship_id: string
+  category_id: string
+  user_email: string
+  bet_type: PoolSeasonBetType
+  team_id: string | null
+  player_id: string | null
+  points: number | null
+  created_at: string
+  updated_at: string
+  team?: Team
+  player?: Player
+  category?: Category
 }

@@ -62,17 +62,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  const signIn = async (email: string, password: string) => {
+  const signIn = async (email: string, password: string): Promise<{ error: string | null; isAdmin?: boolean }> => {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) return { error: error.message }
 
-    // Set user and admin status BEFORE returning, so the navigate happens after state is ready
     setUser(data.user)
     const admin = await fetchAdminStatus(data.user.id)
     setIsAdmin(admin)
     setLoading(false)
 
-    return { error: null }
+    return { error: null, isAdmin: admin }
   }
 
   const signOut = async () => {

@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
-import type { Category, Championship, Team, Player, Match, MatchEvent, Suspension, Standing, TopScorer, PlayerTeam } from '@/types/database'
+import type { Category, Championship, Team, Player, Match, MatchEvent, Suspension, Standing, TopScorer, PlayerTeam, PoolMatchBet, PoolSeasonBet, PoolSeasonBetType } from '@/types/database'
 
 // Categories
 export function useCategories() {
@@ -608,5 +608,152 @@ export function usePostGameVotes(matchId: string | undefined) {
       return data as { id: string; voter_player_id: string; voted_player_id: string; user_id: string; voted_player: { name: string } }[]
     },
     enabled: !!matchId,
+  })
+}
+
+// ========== BOLÃO (Betting Pool) ==========
+
+export function usePoolMatchBets(championshipId: string | undefined) {
+  return useQuery({
+    queryKey: ['pool_match_bets', championshipId],
+    queryFn: async () => {
+      const { data: matches } = await supabase
+        .from('matches')
+        .select('id')
+        .eq('championship_id', championshipId!)
+      if (!matches || matches.length === 0) return [] as PoolMatchBet[]
+      const matchIds = matches.map(m => m.id)
+      const { data, error } = await supabase
+        .from('pool_match_bets')
+        .select('*')
+        .in('match_id', matchIds)
+      if (error) throw error
+      return data as PoolMatchBet[]
+    },
+    enabled: !!championshipId,
+  })
+}
+
+export function usePoolMatchBetsByMatch(matchId: string | undefined) {
+  return useQuery({
+    queryKey: ['pool_match_bets', 'match', matchId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('pool_match_bets')
+        .select('*')
+        .eq('match_id', matchId!)
+      if (error) throw error
+      return data as PoolMatchBet[]
+    },
+    enabled: !!matchId,
+    refetchInterval: 5000,
+  })
+}
+
+export function useMyPoolBets(userId: string | undefined, championshipId: string | undefined) {
+  return useQuery({
+    queryKey: ['pool_match_bets', 'my', userId, championshipId],
+    queryFn: async () => {
+      const { data: matches } = await supabase
+        .from('matches')
+        .select('id')
+        .eq('championship_id', championshipId!)
+      if (!matches || matches.length === 0) return [] as PoolMatchBet[]
+      const matchIds = matches.map(m => m.id)
+      const { data, error } = await supabase
+        .from('pool_match_bets')
+        .select('*')
+        .eq('user_id', userId!)
+        .in('match_id', matchIds)
+      if (error) throw error
+      return data as PoolMatchBet[]
+    },
+    enabled: !!userId && !!championshipId,
+  })
+}
+
+export function useSavePoolMatchBet() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (bet: { id?: string; user_id: string; match_id: string; user_email: string; home_score: number; away_score: number }) => {
+      if (bet.id) {
+        const { error } = await supabase
+          .from('pool_match_bets')
+          .update({ home_score: bet.home_score, away_score: bet.away_score, updated_at: new Date().toISOString() })
+          .eq('id', bet.id)
+        if (error) throw error
+      } else {
+        const { error } = await supabase
+          .from('pool_match_bets')
+          .insert(bet)
+        if (error) throw error
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pool_match_bets'] })
+    },
+  })
+}
+
+export function usePoolSeasonBets(championshipId: string | undefined) {
+  return useQuery({
+    queryKey: ['pool_season_bets', championshipId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('pool_season_bets')
+        .select('*, team:teams(*), player:players(*), category:categories(*)')
+        .eq('championship_id', championshipId!)
+      if (error) throw error
+      return data as PoolSeasonBet[]
+    },
+    enabled: !!championshipId,
+  })
+}
+
+export function useMyPoolSeasonBets(userId: string | undefined, championshipId: string | undefined) {
+  return useQuery({
+    queryKey: ['pool_season_bets', 'my', userId, championshipId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('pool_season_bets')
+        .select('*, team:teams(*), player:players(*), category:categories(*)')
+        .eq('user_id', userId!)
+        .eq('championship_id', championshipId!)
+      if (error) throw error
+      return data as PoolSeasonBet[]
+    },
+    enabled: !!userId && !!championshipId,
+  })
+}
+
+export function useSavePoolSeasonBet() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (bet: {
+      id?: string
+      user_id: string
+      championship_id: string
+      category_id: string
+      user_email: string
+      bet_type: PoolSeasonBetType
+      team_id?: string | null
+      player_id?: string | null
+    }) => {
+      if (bet.id) {
+        const { error } = await supabase
+          .from('pool_season_bets')
+          .update({ team_id: bet.team_id, player_id: bet.player_id, updated_at: new Date().toISOString() })
+          .eq('id', bet.id)
+        if (error) throw error
+      } else {
+        const { error } = await supabase
+          .from('pool_season_bets')
+          .insert(bet)
+        if (error) throw error
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pool_season_bets'] })
+    },
   })
 }

@@ -1,11 +1,13 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
+import { usePoolMatchBetsByMatch } from '@/hooks/useSupabase'
 import { formatDate, phaseLabel } from '@/lib/utils'
-import type { Match, MatchEvent } from '@/types/database'
-import { ArrowLeft, Star, MapPin, Calendar, Clock, Send, Trophy, MessageCircle } from 'lucide-react'
+import { calculateMatchPoints } from '@/lib/pool-points'
+import type { MatchEvent } from '@/types/database'
+import { ArrowLeft, Star, MapPin, Calendar, Clock, Send, Trophy, MessageCircle, Target } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -139,11 +141,30 @@ export default function MatchLive() {
     ...(awayRosterLive?.map((pt: any) => ({ id: pt.player_id, name: pt.player?.name ?? '?', teamName: match?.away_team?.name ?? '' })) ?? []),
   ].sort((a, b) => a.teamName.localeCompare(b.teamName) || a.name.localeCompare(b.name))
 
+  // Bolão bets for this match
+  const { data: poolBets } = usePoolMatchBetsByMatch(matchId)
+
+  const poolStats = useMemo(() => {
+    if (!poolBets || poolBets.length === 0 || match?.home_score == null || match?.away_score == null) {
+      return null
+    }
+    let exactCount = 0
+    let scoringCount = 0
+    let lostCount = 0
+    for (const bet of poolBets) {
+      const pts = calculateMatchPoints(bet.home_score, bet.away_score, match.home_score!, match.away_score!)
+      if (pts === 15) exactCount++
+      if (pts > 0) scoringCount++
+      else lostCount++
+    }
+    return { total: poolBets.length, exactCount, scoringCount, lostCount }
+  }, [poolBets, match?.home_score, match?.away_score])
+
   // Voting state
   const votingOpen = match?.voting_open === true
   const votingClosedAt = match?.voting_closed_at ? new Date(match.voting_closed_at) : null
   const isVotingClosed = votingClosedAt ? new Date() > votingClosedAt : false
-  const showResults = isVotingClosed || matchState === 'finished'
+  const showResults = isVotingClosed || match?.match_state === 'finished'
 
   const [chatMsg, setChatMsg] = useState('')
   const [sendingMsg, setSendingMsg] = useState(false)
@@ -471,6 +492,35 @@ export default function MatchLive() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Bolão stats */}
+            {poolStats && poolStats.total > 0 && (
+              <Card className="bg-[#0f1a2e] border-slate-700/50">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Target className="h-4 w-4 text-amber-400" />
+                    <h3 className="text-sm font-semibold text-amber-400 uppercase tracking-wider">
+                      Bolão
+                    </h3>
+                    <span className="text-xs text-slate-500">{poolStats.total} aposta{poolStats.total !== 1 ? 's' : ''}</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3 text-center">
+                    <div className="bg-green-500/10 rounded-lg p-3 border border-green-500/20">
+                      <div className="text-2xl font-bold text-green-400">{poolStats.exactCount}</div>
+                      <div className="text-[10px] text-green-400/70 font-medium uppercase">Placar exato</div>
+                    </div>
+                    <div className="bg-amber-500/10 rounded-lg p-3 border border-amber-500/20">
+                      <div className="text-2xl font-bold text-amber-400">{poolStats.scoringCount}</div>
+                      <div className="text-[10px] text-amber-400/70 font-medium uppercase">Pontuando</div>
+                    </div>
+                    <div className="bg-red-500/10 rounded-lg p-3 border border-red-500/20">
+                      <div className="text-2xl font-bold text-red-400">{poolStats.lostCount}</div>
+                      <div className="text-[10px] text-red-400/70 font-medium uppercase">Zerados</div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Events timeline */}
             {events && events.length > 0 && (

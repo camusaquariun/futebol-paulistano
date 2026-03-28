@@ -41,8 +41,14 @@ function PlayerRow({ playerTeam, onMarkStatus }: { playerTeam: PlayerTeam; onMar
 
   return (
     <div className={`flex items-center gap-3 py-3 px-4 border-b border-navy-800 last:border-0 ${isInactive ? 'opacity-50' : ''}`}>
-      <div className={`h-9 w-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 relative ${isInactive ? 'bg-red-900/30 text-red-400' : isGk ? 'bg-gold-500/20 text-gold-400' : 'bg-navy-700 text-slate-300'}`}>
-        {playerTeam.jersey_number ?? '—'}
+      <div className="h-9 w-9 rounded-full flex-shrink-0 relative">
+        {playerTeam.player?.photo_url ? (
+          <img src={playerTeam.player.photo_url} className="h-9 w-9 rounded-full object-cover border border-navy-600" />
+        ) : (
+          <div className={`h-9 w-9 rounded-full flex items-center justify-center text-sm font-bold ${isInactive ? 'bg-red-900/30 text-red-400' : isGk ? 'bg-gold-500/20 text-gold-400' : 'bg-navy-700 text-slate-300'}`}>
+            {playerTeam.jersey_number ?? '—'}
+          </div>
+        )}
         {isCaptain && !isInactive && (
           <div className="absolute -top-1 -right-1 bg-gold-500 rounded-full p-0.5">
             <Crown className="h-2.5 w-2.5 text-navy-950" />
@@ -88,6 +94,7 @@ function PositionEditor({
   onSetCaptain,
   onJerseyChange,
   onLinkUser,
+  onPhotoUpload,
   saving,
   settingCaptain,
 }: {
@@ -96,6 +103,7 @@ function PositionEditor({
   onSetCaptain: (id: string) => void
   onJerseyChange: (id: string, value: string) => void
   onLinkUser: (playerId: string, email: string) => void
+  onPhotoUpload: (playerId: string, file: File) => void
   saving: boolean
   settingCaptain: boolean
 }) {
@@ -112,14 +120,24 @@ function PositionEditor({
 
   return (
     <div className="flex items-center gap-3 py-3 px-4 border-b border-navy-800 last:border-0 bg-navy-800/30">
-      <div className="h-9 w-9 rounded-full bg-navy-700 flex items-center justify-center text-sm font-bold text-slate-300 flex-shrink-0 relative">
-        {playerTeam.player?.name?.charAt(0) ?? '?'}
+      <label className="h-9 w-9 rounded-full flex-shrink-0 relative cursor-pointer group">
+        {playerTeam.player?.photo_url ? (
+          <img src={playerTeam.player.photo_url} className="h-9 w-9 rounded-full object-cover border border-navy-600" />
+        ) : (
+          <div className="h-9 w-9 rounded-full bg-navy-700 flex items-center justify-center text-sm font-bold text-slate-300">
+            {playerTeam.player?.name?.charAt(0) ?? '?'}
+          </div>
+        )}
+        <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+          <span className="text-white text-[9px]">📷</span>
+        </div>
+        <input type="file" accept="image/*" className="hidden" onChange={e => e.target.files?.[0] && onPhotoUpload(playerTeam.player_id, e.target.files[0])} />
         {playerTeam.is_captain && (
           <div className="absolute -top-1 -right-1 bg-gold-500 rounded-full p-0.5">
             <Crown className="h-2.5 w-2.5 text-navy-950" />
           </div>
         )}
-      </div>
+      </label>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-1.5">
           <p className="font-medium text-white text-sm">{playerTeam.player?.name}</p>
@@ -239,6 +257,16 @@ export default function TeamDetail() {
       if (data.error) alert('Erro: ' + data.error)
       else alert('Jogador vinculado com sucesso!')
     } catch { alert('Erro ao vincular') }
+  }
+
+  const handlePhotoUpload = async (playerId: string, file: File) => {
+    const ext = file.name.split('.').pop()
+    const path = `${playerId}-${Date.now()}.${ext}`
+    const { error } = await supabase.storage.from('player-photos').upload(path, file, { upsert: true })
+    if (error) { alert('Erro ao enviar foto'); return }
+    const { data } = supabase.storage.from('player-photos').getPublicUrl(path)
+    await supabase.from('players').update({ photo_url: data.publicUrl }).eq('id', playerId)
+    queryClient.invalidateQueries({ queryKey: ['team_roster'] })
   }
 
   const openStatusDialog = (pt: PlayerTeam) => {
@@ -386,6 +414,7 @@ export default function TeamDetail() {
                   onSetCaptain={handleSetCaptain}
                   onJerseyChange={handleJerseyChange}
                   onLinkUser={handleLinkUser}
+                  onPhotoUpload={handlePhotoUpload}
                   saving={savingId === pt.id}
                   settingCaptain={settingCaptain}
                 />

@@ -42,7 +42,7 @@ export default function Referees() {
     queryFn: async () => {
       const { data, error } = await supabase.from('referees').select('*').order('name')
       if (error) throw error
-      return data as { id: string; name: string; phone: string | null; photo_url: string | null; active: boolean; roles: string[] }[]
+      return data as { id: string; name: string; phone: string | null; photo_url: string | null; active: boolean; roles: string[]; user_id: string | null }[]
     },
   })
 
@@ -66,6 +66,7 @@ export default function Referees() {
   const [refName, setRefName] = useState('')
   const [refPhone, setRefPhone] = useState('')
   const [refRoles, setRefRoles] = useState<string[]>(['field', 'table'])
+  const [refEmail, setRefEmail] = useState('')
   const [saving, setSaving] = useState(false)
 
   // Detail view
@@ -83,15 +84,34 @@ export default function Referees() {
   const [ratingValue, setRatingValue] = useState(0)
   const [ratingNotes, setRatingNotes] = useState('')
 
-  const openNew = () => { setEditingRef(null); setRefName(''); setRefPhone(''); setRefRoles(['field', 'table']); setEditOpen(true) }
-  const openEdit = (ref: any) => { setEditingRef(ref); setRefName(ref.name); setRefPhone(ref.phone ?? ''); setRefRoles(ref.roles ?? ['field', 'table']); setEditOpen(true) }
+  const openNew = () => { setEditingRef(null); setRefName(''); setRefPhone(''); setRefRoles(['field', 'table']); setRefEmail(''); setEditOpen(true) }
+  const openEdit = (ref: any) => { setEditingRef(ref); setRefName(ref.name); setRefPhone(ref.phone ?? ''); setRefRoles(ref.roles ?? ['field', 'table']); setRefEmail(''); setEditOpen(true) }
 
   const handleSaveRef = async () => {
     setSaving(true)
+    let userId: string | null | undefined = undefined // undefined = don't change
+
+    // If email provided, look up user
+    if (refEmail.trim()) {
+      const { data: matchedUser } = await supabase.rpc('get_user_id_by_email', { p_email: refEmail.trim() }).maybeSingle()
+      if (matchedUser && (matchedUser as any).id) {
+        userId = (matchedUser as any).id
+      } else {
+        alert('Usuário com esse email não encontrado.')
+        setSaving(false)
+        return
+      }
+    }
+
     if (editingRef) {
-      await supabase.from('referees').update({ name: refName, phone: refPhone || null, roles: refRoles }).eq('id', editingRef.id)
+      const updateData: any = { name: refName, phone: refPhone || null, roles: refRoles }
+      if (userId !== undefined) updateData.user_id = userId
+      await supabase.from('referees').update(updateData).eq('id', editingRef.id)
     } else {
-      await supabase.from('referees').insert({ name: refName, phone: refPhone || null, roles: refRoles })
+      await supabase.from('referees').insert({
+        name: refName, phone: refPhone || null, roles: refRoles,
+        user_id: userId ?? null,
+      })
     }
     queryClient.invalidateQueries({ queryKey: ['referees'] })
     setSaving(false)
@@ -269,6 +289,7 @@ export default function Referees() {
                       <div className="flex gap-1 mt-0.5">
                         {ref.roles?.includes('field') && <Badge variant="default" className="text-[8px] px-1 py-0">Campo</Badge>}
                         {ref.roles?.includes('table') && <Badge variant="secondary" className="text-[8px] px-1 py-0">Mesa</Badge>}
+                        {ref.user_id && <Badge variant="outline" className="text-[8px] px-1 py-0 border-pitch-500/40 text-pitch-400">Vinculado</Badge>}
                       </div>
                     </div>
                     <Button variant="ghost" size="icon" onClick={e => { e.stopPropagation(); openEdit(ref) }}>
@@ -309,6 +330,11 @@ export default function Referees() {
             <div className="space-y-2">
               <Label>Telefone (opcional)</Label>
               <Input value={refPhone} onChange={e => setRefPhone(e.target.value)} placeholder="(11) 99999-9999" />
+            </div>
+            <div className="space-y-2">
+              <Label>Email do Usuário (para acesso à arbitragem)</Label>
+              <Input value={refEmail} onChange={e => setRefEmail(e.target.value)} placeholder="arbitro@email.com" type="email" />
+              <p className="text-[10px] text-slate-500">O árbitro poderá gerenciar partidas pelo link /arbitragem</p>
             </div>
             <div className="space-y-2">
               <Label>Funções</Label>
