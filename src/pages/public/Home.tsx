@@ -61,12 +61,17 @@ export default function Home() {
               <Card className={`card-hover overflow-hidden border-0 bg-gradient-to-br ${categoryColors[cat.name] || 'from-navy-600 to-navy-800'}`}>
                 <CardContent className="p-6 text-center">
                   <div className="text-4xl mb-3">{categoryIcons[cat.name] || '⚽'}</div>
-                  <h3 className="text-xl font-bold text-white">{cat.name}</h3>
-                  <p className="text-white/70 text-sm mt-1">
-                    {cat.name === 'Livre' && 'Categoria aberta'}
-                    {cat.name === 'Master' && 'Acima de 35 anos'}
-                    {cat.name === 'Veterano' && 'Acima de 45 anos'}
-                  </p>
+                  {(() => {
+                    const cc = champCategories?.find((c: any) => c.category_id === cat.id)
+                    const title = (cc as any)?.custom_title || cat.name
+                    const desc = (cc as any)?.custom_description || cat.description
+                    return (
+                      <>
+                        <h3 className="text-xl font-bold text-white">{title}</h3>
+                        {desc && <p className="text-white/70 text-sm mt-1">{desc}</p>}
+                      </>
+                    )
+                  })()}
                 </CardContent>
               </Card>
             </Link>

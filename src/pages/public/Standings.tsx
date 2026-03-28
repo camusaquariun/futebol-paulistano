@@ -1,4 +1,6 @@
 import { Link } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
+import { supabase } from '@/lib/supabase'
 import { useActiveChampionship, useStandings, useTeamsByCategory, useChampionshipCategories, useTopScorers, useMatches } from '@/hooks/useSupabase'
 import { CategoryTabs } from '@/components/CategoryTabs'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
@@ -13,6 +15,67 @@ function CategoryHighlights({ categoryId }: { categoryId: string }) {
   const { data: standings } = useStandings(championship?.id, categoryId)
   const { data: scorers } = useTopScorers(championship?.id, categoryId)
   const { data: matches } = useMatches(championship?.id, categoryId)
+
+  // Top cards and donations
+  const { data: topYellows } = useQuery({
+    queryKey: ['top_yellows', championship?.id, categoryId],
+    queryFn: async () => {
+      const { data } = await supabase.from('match_events')
+        .select('player_id, player:players(name), team:teams(name), match:matches!inner(championship_id, category_id)')
+        .eq('event_type', 'yellow_card')
+        .eq('match.championship_id', championship!.id)
+        .eq('match.category_id', categoryId)
+      if (!data) return []
+      const counts: Record<string, { name: string; team: string; count: number }> = {}
+      for (const e of data as any[]) {
+        const pid = e.player_id
+        if (!counts[pid]) counts[pid] = { name: e.player?.name ?? '?', team: e.team?.name ?? '?', count: 0 }
+        counts[pid].count++
+      }
+      return Object.values(counts).sort((a, b) => b.count - a.count).slice(0, 5)
+    },
+    enabled: !!championship?.id,
+  })
+
+  const { data: topReds } = useQuery({
+    queryKey: ['top_reds', championship?.id, categoryId],
+    queryFn: async () => {
+      const { data } = await supabase.from('match_events')
+        .select('player_id, player:players(name), team:teams(name), match:matches!inner(championship_id, category_id)')
+        .eq('event_type', 'red_card')
+        .eq('match.championship_id', championship!.id)
+        .eq('match.category_id', categoryId)
+      if (!data) return []
+      const counts: Record<string, { name: string; team: string; count: number }> = {}
+      for (const e of data as any[]) {
+        const pid = e.player_id
+        if (!counts[pid]) counts[pid] = { name: e.player?.name ?? '?', team: e.team?.name ?? '?', count: 0 }
+        counts[pid].count++
+      }
+      return Object.values(counts).sort((a, b) => b.count - a.count).slice(0, 5)
+    },
+    enabled: !!championship?.id,
+  })
+
+  const { data: topDonors } = useQuery({
+    queryKey: ['top_donors', championship?.id, categoryId],
+    queryFn: async () => {
+      const { data } = await supabase.from('food_donations')
+        .select('player_id, required_kg, delivered, player:players(name)')
+        .eq('championship_id', championship!.id)
+        .eq('category_id', categoryId)
+        .eq('delivered', true)
+      if (!data) return []
+      const totals: Record<string, { name: string; kg: number }> = {}
+      for (const d of data as any[]) {
+        const pid = d.player_id
+        if (!totals[pid]) totals[pid] = { name: d.player?.name ?? '?', kg: 0 }
+        totals[pid].kg += d.required_kg
+      }
+      return Object.values(totals).sort((a, b) => b.kg - a.kg).slice(0, 5)
+    },
+    enabled: !!championship?.id,
+  })
 
   const sorted = standings?.slice().sort((a, b) => b.points - a.points || b.goal_difference - a.goal_difference) ?? []
   const topScorer = scorers?.[0]
@@ -29,7 +92,8 @@ function CategoryHighlights({ categoryId }: { categoryId: string }) {
   if (!hasData) return null
 
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+    <div className="space-y-3 mb-4">
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
       {/* Top scorer */}
       <Card className="bg-gradient-to-br from-gold-500/10 to-gold-600/5 border-gold-500/20">
         <CardContent className="p-3">
@@ -114,6 +178,72 @@ function CategoryHighlights({ categoryId }: { categoryId: string }) {
           )}
         </CardContent>
       </Card>
+    </div>
+
+    {/* Top cards + donations row */}
+    {((topYellows && topYellows.length > 0) || (topReds && topReds.length > 0) || (topDonors && topDonors.length > 0)) && (
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {/* Top yellow cards */}
+        {topYellows && topYellows.length > 0 && (
+          <Card className="bg-gradient-to-br from-yellow-500/5 to-yellow-600/5 border-yellow-500/20">
+            <CardContent className="p-3">
+              <div className="flex items-center gap-1.5 mb-2">
+                <span className="text-base">🟨</span>
+                <span className="text-[10px] text-yellow-400 font-semibold uppercase">Top Cartões Amarelos</span>
+              </div>
+              <div className="space-y-1">
+                {topYellows.map((p, i) => (
+                  <div key={i} className="flex items-center justify-between text-xs">
+                    <span className="text-slate-300 truncate">{i + 1}. {p.name}</span>
+                    <span className="text-yellow-400 font-bold">{p.count}🟨</span>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Top red cards */}
+        {topReds && topReds.length > 0 && (
+          <Card className="bg-gradient-to-br from-red-500/5 to-red-600/5 border-red-500/20">
+            <CardContent className="p-3">
+              <div className="flex items-center gap-1.5 mb-2">
+                <span className="text-base">🟥</span>
+                <span className="text-[10px] text-red-400 font-semibold uppercase">Top Cartões Vermelhos</span>
+              </div>
+              <div className="space-y-1">
+                {topReds.map((p, i) => (
+                  <div key={i} className="flex items-center justify-between text-xs">
+                    <span className="text-slate-300 truncate">{i + 1}. {p.name}</span>
+                    <span className="text-red-400 font-bold">{p.count}🟥</span>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Top food donors */}
+        {topDonors && topDonors.length > 0 && (
+          <Card className="bg-gradient-to-br from-orange-500/5 to-orange-600/5 border-orange-500/20">
+            <CardContent className="p-3">
+              <div className="flex items-center gap-1.5 mb-2">
+                <span className="text-base">🥫</span>
+                <span className="text-[10px] text-orange-400 font-semibold uppercase">Maior Doador de Alimentos</span>
+              </div>
+              <div className="space-y-1">
+                {topDonors.map((p, i) => (
+                  <div key={i} className="flex items-center justify-between text-xs">
+                    <span className="text-slate-300 truncate">{i + 1}. {p.name}</span>
+                    <span className="text-orange-400 font-bold">{p.kg}kg</span>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    )}
     </div>
   )
 }

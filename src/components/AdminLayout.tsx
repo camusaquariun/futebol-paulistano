@@ -3,7 +3,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { AdminChampionshipProvider } from '@/hooks/useAdminChampionship'
 import { AdminChampionshipSelector } from '@/components/AdminChampionshipSelector'
 import {
-  LayoutDashboard, Trophy, Users, UserCircle, Calendar, ShieldAlert, Upload, LogOut, ChevronLeft, BarChart3, MapPin, Swords,
+  LayoutDashboard, Trophy, Users, UserCircle, Calendar, ShieldAlert, Upload, LogOut, ChevronLeft, BarChart3, MapPin, Swords, Gavel,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -18,6 +18,7 @@ const sidebarItems = [
   { path: '/admin/suspensoes', label: 'Suspensões', icon: ShieldAlert },
   { path: '/admin/importar', label: 'Importar CSV', icon: Upload },
   { path: '/admin/prancheta', label: 'Prancheta Tática', icon: MapPin },
+  { path: '/admin/arbitragem', label: 'Arbitragem', icon: Gavel },
   { path: '/admin/amistosos', label: 'Amistosos', icon: Swords },
 ]
 

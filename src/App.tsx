@@ -19,6 +19,7 @@ import TeamDetail from '@/pages/admin/TeamDetail'
 import StandingsAdmin from '@/pages/admin/StandingsAdmin'
 import TacticalBoardAdmin from '@/pages/admin/TacticalBoardAdmin'
 import FriendlyAdmin from '@/pages/admin/FriendlyAdmin'
+import RefereesAdmin from '@/pages/admin/Referees'
 import TeamProfile from '@/pages/public/TeamProfile'
 import MatchLive from '@/pages/public/MatchLive'
 import MyTeam from '@/pages/public/MyTeam'
@@ -57,6 +58,7 @@ export default function App() {
         <Route path="importar" element={<ImportCSV />} />
         <Route path="prancheta" element={<TacticalBoardAdmin />} />
         <Route path="amistosos" element={<FriendlyAdmin />} />
+        <Route path="arbitragem" element={<RefereesAdmin />} />
       </Route>
     </Routes>
   )

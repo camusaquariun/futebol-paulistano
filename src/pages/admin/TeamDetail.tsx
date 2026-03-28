@@ -2,10 +2,15 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useState } from 'react'
 import { useTeams, useTeamRoster, useUpdatePlayerPositions, useSetCaptain, useCategories, useUpdateJerseyNumber } from '@/hooks/useSupabase'
 import { useAdminChampionship } from '@/hooks/useAdminChampionship'
+import { supabase } from '@/lib/supabase'
+import { useQueryClient } from '@tanstack/react-query'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { ChevronLeft, Shield, UserCircle, Pencil, Save, X, Crown } from 'lucide-react'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { ChevronLeft, Shield, UserCircle, Pencil, Save, X, Crown, AlertTriangle, UserPlus } from 'lucide-react'
 import { ALL_POSITIONS } from '@/types/database'
 import type { PlayerTeam } from '@/types/database'
 
@@ -28,33 +33,49 @@ function PositionBadge({ pos }: { pos: string }) {
   )
 }
 
-function PlayerRow({ playerTeam }: { playerTeam: PlayerTeam }) {
+function PlayerRow({ playerTeam, onMarkStatus }: { playerTeam: PlayerTeam; onMarkStatus?: (pt: PlayerTeam) => void }) {
   const positions = playerTeam.positions?.filter(p => p !== 'Jogador') ?? []
   const isGk = positions.includes('Goleiro')
   const isCaptain = playerTeam.is_captain
+  const isInactive = playerTeam.status === 'injured' || playerTeam.status === 'withdrawn'
 
   return (
-    <div className="flex items-center gap-3 py-3 px-4 border-b border-navy-800 last:border-0">
-      <div className={`h-9 w-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 relative ${isGk ? 'bg-gold-500/20 text-gold-400' : 'bg-navy-700 text-slate-300'}`}>
+    <div className={`flex items-center gap-3 py-3 px-4 border-b border-navy-800 last:border-0 ${isInactive ? 'opacity-50' : ''}`}>
+      <div className={`h-9 w-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 relative ${isInactive ? 'bg-red-900/30 text-red-400' : isGk ? 'bg-gold-500/20 text-gold-400' : 'bg-navy-700 text-slate-300'}`}>
         {playerTeam.jersey_number ?? '—'}
-        {isCaptain && (
+        {isCaptain && !isInactive && (
           <div className="absolute -top-1 -right-1 bg-gold-500 rounded-full p-0.5">
             <Crown className="h-2.5 w-2.5 text-navy-950" />
+          </div>
+        )}
+        {isInactive && (
+          <div className="absolute -top-1 -right-1 bg-red-500 rounded-full p-0.5">
+            <AlertTriangle className="h-2.5 w-2.5 text-white" />
           </div>
         )}
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
-          <p className="font-medium text-white text-sm">{playerTeam.player?.name}</p>
+          <p className={`font-medium text-sm ${isInactive ? 'text-slate-500 line-through' : 'text-white'}`}>{playerTeam.player?.name}</p>
           {playerTeam.player?.user_id && <span className="text-[10px] text-pitch-400" title="Conta vinculada">🔗</span>}
-          {isCaptain && <Badge variant="warning" className="text-[9px] px-1 py-0">C</Badge>}
+          {isCaptain && !isInactive && <Badge variant="warning" className="text-[9px] px-1 py-0">C</Badge>}
+          {playerTeam.status === 'injured' && <Badge variant="destructive" className="text-[8px] px-1 py-0">Lesionado</Badge>}
+          {playerTeam.status === 'withdrawn' && <Badge variant="destructive" className="text-[8px] px-1 py-0">Desistência</Badge>}
         </div>
+        {playerTeam.status_note && <p className="text-[10px] text-slate-500">{playerTeam.status_note}</p>}
       </div>
-      <div className="flex flex-wrap gap-1 justify-end">
-        {positions.length > 0 ? positions.map(pos => (
-          <PositionBadge key={pos} pos={pos} />
-        )) : (
-          <span className="text-xs text-slate-600">—</span>
+      <div className="flex items-center gap-2">
+        <div className="flex flex-wrap gap-1 justify-end">
+          {!isInactive && positions.length > 0 ? positions.map(pos => (
+            <PositionBadge key={pos} pos={pos} />
+          )) : !isInactive ? (
+            <span className="text-xs text-slate-600">—</span>
+          ) : null}
+        </div>
+        {onMarkStatus && !isInactive && (
+          <button onClick={() => onMarkStatus(playerTeam)} className="text-[9px] text-red-400/50 hover:text-red-400 transition-colors" title="Marcar como lesionado/desistência">
+            <AlertTriangle className="h-3.5 w-3.5" />
+          </button>
         )}
       </div>
     </div>
@@ -165,9 +186,18 @@ export default function TeamDetail() {
   const updatePositions = useUpdatePlayerPositions()
   const setCaptain = useSetCaptain()
   const updateJersey = useUpdateJerseyNumber()
+  const queryClient = useQueryClient()
   const [editing, setEditing] = useState(false)
   const [savingId, setSavingId] = useState<string | null>(null)
   const [settingCaptain, setSettingCaptain] = useState(false)
+
+  // Status change (injury/withdrawal) + replacement
+  const [statusOpen, setStatusOpen] = useState(false)
+  const [statusTarget, setStatusTarget] = useState<PlayerTeam | null>(null)
+  const [statusType, setStatusType] = useState<'injured' | 'withdrawn'>('injured')
+  const [statusNote, setStatusNote] = useState('')
+  const [replacementName, setReplacementName] = useState('')
+  const [savingStatus, setSavingStatus] = useState(false)
 
   const team = teams?.find(t => t.id === teamId)
 
@@ -209,6 +239,50 @@ export default function TeamDetail() {
       if (data.error) alert('Erro: ' + data.error)
       else alert('Jogador vinculado com sucesso!')
     } catch { alert('Erro ao vincular') }
+  }
+
+  const openStatusDialog = (pt: PlayerTeam) => {
+    setStatusTarget(pt)
+    setStatusType('injured')
+    setStatusNote('')
+    setReplacementName('')
+    setStatusOpen(true)
+  }
+
+  const handleSaveStatus = async () => {
+    if (!statusTarget || !teamId || !activeRoster) return
+    setSavingStatus(true)
+
+    // Mark player as injured/withdrawn
+    await supabase.from('player_teams').update({
+      status: statusType,
+      status_note: statusNote || null,
+      status_changed_at: new Date().toISOString(),
+    }).eq('id', statusTarget.id)
+
+    // Create replacement player if name provided
+    if (replacementName.trim()) {
+      // Create new player
+      const { data: newPlayer, error: pErr } = await supabase.from('players').insert({ name: replacementName.trim() }).select('id').single()
+      if (!pErr && newPlayer) {
+        // Link to the same team + category with same jersey
+        await supabase.from('player_teams').insert({
+          player_id: newPlayer.id,
+          team_id: teamId,
+          category_id: activeRoster.catId,
+          positions: statusTarget.positions ?? [],
+          jersey_number: statusTarget.jersey_number,
+          status: 'active',
+        })
+        // Mark replaced_by
+        await supabase.from('player_teams').update({ replaced_by: newPlayer.id }).eq('id', statusTarget.id)
+      }
+    }
+
+    queryClient.invalidateQueries({ queryKey: ['team_roster'] })
+    queryClient.invalidateQueries({ queryKey: ['players'] })
+    setSavingStatus(false)
+    setStatusOpen(false)
   }
 
   const handleJerseyChange = async (playerTeamId: string, value: string) => {
@@ -316,12 +390,64 @@ export default function TeamDetail() {
                   settingCaptain={settingCaptain}
                 />
               ) : (
-                <PlayerRow key={pt.id} playerTeam={pt} />
+                <PlayerRow key={pt.id} playerTeam={pt} onMarkStatus={openStatusDialog} />
               )
             )}
           </div>
         )}
       </Card>
+
+      {/* Status change dialog (injury/withdrawal + replacement) */}
+      <Dialog open={statusOpen} onOpenChange={setStatusOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-red-400" />
+              Afastar Jogador
+            </DialogTitle>
+          </DialogHeader>
+          {statusTarget && (
+            <div className="space-y-4">
+              <div className="bg-navy-800 rounded-lg p-3">
+                <p className="text-sm font-bold text-white">{statusTarget.player?.name}</p>
+                <p className="text-xs text-slate-400">Nº {statusTarget.jersey_number ?? '—'}</p>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Motivo</Label>
+                <div className="flex gap-2">
+                  <button onClick={() => setStatusType('injured')}
+                    className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-colors ${statusType === 'injured' ? 'bg-red-600 text-white' : 'bg-navy-800 text-slate-400'}`}>
+                    🏥 Lesão
+                  </button>
+                  <button onClick={() => setStatusType('withdrawn')}
+                    className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-colors ${statusType === 'withdrawn' ? 'bg-red-600 text-white' : 'bg-navy-800 text-slate-400'}`}>
+                    🚪 Desistência
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Observação (opcional)</Label>
+                <Input value={statusNote} onChange={e => setStatusNote(e.target.value)} placeholder="Ex: Lesão no joelho" />
+              </div>
+
+              <div className="border-t border-navy-700 pt-4 space-y-2">
+                <Label className="flex items-center gap-2">
+                  <UserPlus className="h-4 w-4 text-pitch-400" />
+                  Substituto (opcional)
+                </Label>
+                <p className="text-[10px] text-slate-500">Se preenchido, um novo jogador será criado e adicionado ao time com a mesma posição e número.</p>
+                <Input value={replacementName} onChange={e => setReplacementName(e.target.value)} placeholder="Nome do novo jogador" />
+              </div>
+
+              <Button onClick={handleSaveStatus} className="w-full bg-red-600 hover:bg-red-700" disabled={savingStatus}>
+                {savingStatus ? 'Processando...' : `Afastar ${statusTarget.player?.name?.split(' ')[0]}`}
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

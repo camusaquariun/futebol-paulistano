@@ -8,6 +8,8 @@ export type SuspensionReason = 'three_yellows' | 'red_card'
 export interface Category {
   id: string
   name: CategoryName
+  display_order: number
+  description: string | null
   created_at: string
 }
 
@@ -46,6 +48,9 @@ export interface PlayerTeam {
   positions: string[]
   is_captain: boolean
   jersey_number: number | null
+  status: 'active' | 'injured' | 'withdrawn'
+  status_note: string | null
+  replaced_by: string | null
   player?: Player
   team?: Team
   category?: Category

@@ -1,4 +1,6 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
+import { supabase } from '@/lib/supabase'
+import { useQueryClient } from '@tanstack/react-query'
 import { useMatches, useCategories, useTeamsByCategory, useSaveMatch, useChampionshipCategories } from '@/hooks/useSupabase'
 import { useAdminChampionship } from '@/hooks/useAdminChampionship'
 import { Card, CardContent } from '@/components/ui/card'
@@ -13,6 +15,26 @@ import { formatDate, phaseLabel } from '@/lib/utils'
 import { Link } from 'react-router-dom'
 import type { MatchPhase } from '@/types/database'
 
+const VALID_DAYS = [1, 2, 4] // Monday, Tuesday, Thursday
+const DAY_NAMES: Record<number, string> = { 1: 'Seg', 2: 'Ter', 4: 'Qui' }
+
+function getValidDates(count: number): string[] {
+  const dates: string[] = []
+  const d = new Date()
+  d.setDate(d.getDate() + 1)
+  while (dates.length < count) {
+    if (VALID_DAYS.includes(d.getDay())) dates.push(d.toISOString().split('T')[0])
+    d.setDate(d.getDate() + 1)
+  }
+  return dates
+}
+
+function formatDateLabel(date: string): string {
+  const d = new Date(date + 'T12:00:00')
+  const day = DAY_NAMES[d.getDay()] ?? ''
+  return `${day}, ${d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}`
+}
+
 export default function MatchesAdmin() {
   const { selectedId: championshipId, selected: championship } = useAdminChampionship()
   const { data: categories } = useCategories()
@@ -22,12 +44,22 @@ export default function MatchesAdmin() {
   const { data: matches, isLoading } = useMatches(championshipId, filterCategory !== 'all' ? filterCategory : undefined)
 
   const saveMutation = useSaveMatch()
+  const queryClient = useQueryClient()
+  const validDates = useMemo(() => getValidDates(24), [])
   const [open, setOpen] = useState(false)
+  // Schedule editor
+  const [scheduleOpen, setScheduleOpen] = useState(false)
+  const [scheduleMatchId, setScheduleMatchId] = useState('')
+  const [scheduleDay, setScheduleDay] = useState('')
+  const [scheduleTime, setScheduleTime] = useState('20:00')
+  const [scheduleLocation, setScheduleLocation] = useState('')
+  const [scheduleSaving, setScheduleSaving] = useState(false)
   const [categoryId, setCategoryId] = useState('')
   const [phase, setPhase] = useState<MatchPhase>('grupos')
   const [homeTeamId, setHomeTeamId] = useState('')
   const [awayTeamId, setAwayTeamId] = useState('')
   const [matchDate, setMatchDate] = useState('')
+  const [matchTime, setMatchTime] = useState('20:00')
   const [location, setLocation] = useState('')
   const [round, setRound] = useState(1)
   const { data: teamsForCategory } = useTeamsByCategory(championshipId, categoryId || undefined)
@@ -55,12 +87,60 @@ export default function MatchesAdmin() {
       phase,
       home_team_id: homeTeamId,
       away_team_id: awayTeamId,
-      match_date: matchDate || null,
+      match_date: matchDate ? `${matchDate}T${matchTime}:00` : null,
       location: location || null,
       round,
       status: 'scheduled',
     })
     setOpen(false)
+  }
+
+  const openSchedule = (match: any) => {
+    setScheduleMatchId(match.id)
+    if (match.match_date) {
+      const d = new Date(match.match_date)
+      setScheduleDay(d.toISOString().split('T')[0])
+      const h = d.getHours()
+      setScheduleTime(h >= 21 ? '21:00' : '20:00')
+    } else {
+      setScheduleDay('')
+      setScheduleTime('20:00')
+    }
+    setScheduleLocation(match.location ?? '')
+    setScheduleOpen(true)
+  }
+
+  const handleSaveSchedule = async () => {
+    if (!scheduleMatchId) return
+    setScheduleSaving(true)
+    const matchDate = scheduleDay ? `${scheduleDay}T${scheduleTime}:00` : null
+    await supabase.from('matches').update({
+      match_date: matchDate,
+      location: scheduleLocation || null,
+    }).eq('id', scheduleMatchId)
+    queryClient.invalidateQueries({ queryKey: ['matches'] })
+    setScheduleSaving(false)
+    setScheduleOpen(false)
+  }
+
+  const handleGenerateReturnMatches = async (catId: string) => {
+    if (!championshipId) return
+    const catMatches = matches?.filter(m => m.category_id === catId && m.phase === 'grupos' && (m as any).round === 1) ?? []
+    const existing2nd = matches?.filter(m => m.category_id === catId && m.phase === 'grupos' && (m as any).round === 2) ?? []
+    if (existing2nd.length > 0) { alert('Jogos de volta já existem para esta categoria.'); return }
+    if (catMatches.length === 0) { alert('Nenhum jogo de ida encontrado.'); return }
+    const returnMatches = catMatches.map(m => ({
+      championship_id: championshipId,
+      category_id: catId,
+      phase: 'grupos' as const,
+      home_team_id: m.away_team_id,
+      away_team_id: m.home_team_id,
+      status: 'scheduled' as const,
+      round: 2,
+    }))
+    await supabase.from('matches').insert(returnMatches)
+    queryClient.invalidateQueries({ queryKey: ['matches'] })
+    alert(`${returnMatches.length} jogos de volta gerados!`)
   }
 
   const filtered = matches?.filter(m =>
@@ -81,8 +161,8 @@ export default function MatchesAdmin() {
         <Button onClick={openNew}><Plus className="h-4 w-4 mr-2" />Nova Partida</Button>
       </div>
 
-      {/* Filters */}
-      <div className="flex gap-3 flex-wrap">
+      {/* Filters + Actions */}
+      <div className="flex gap-3 flex-wrap items-center">
         <Select value={filterCategory} onValueChange={setFilterCategory}>
           <SelectTrigger className="w-40"><SelectValue placeholder="Categoria" /></SelectTrigger>
           <SelectContent>
@@ -100,6 +180,20 @@ export default function MatchesAdmin() {
             <SelectItem value="final">Final</SelectItem>
           </SelectContent>
         </Select>
+        {/* Generate return matches for categories with ida e volta */}
+        {filterCategory !== 'all' && (() => {
+          const cc = champCategories?.find((c: any) => c.category_id === filterCategory)
+          const has2ndRound = matches?.some(m => m.category_id === filterCategory && (m as any).round === 2)
+          if ((cc as any)?.turns === 2 && !has2ndRound) {
+            return (
+              <Button variant="outline" size="sm" onClick={() => handleGenerateReturnMatches(filterCategory)}
+                className="border-gold-500/50 text-gold-400 hover:bg-gold-500/10">
+                🔄 Gerar jogos de volta
+              </Button>
+            )
+          }
+          return null
+        })()}
       </div>
 
       {isLoading ? (
@@ -107,37 +201,44 @@ export default function MatchesAdmin() {
       ) : (
         <div className="space-y-3">
           {filtered.map(match => (
-            <Link key={match.id} to={`/admin/partidas/${match.id}`}>
-              <Card className="card-hover">
-                <CardContent className="p-4 flex items-center gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Badge variant="secondary" className="text-xs">{match.category?.name}</Badge>
-                      <Badge variant="outline" className="text-xs">{phaseLabel(match.phase)}</Badge>
-                      {match.phase === 'grupos' && (match as any).round === 2 && (
-                        <Badge variant="outline" className="text-xs text-gold-400 border-gold-500/30">2º Turno</Badge>
-                      )}
-                      <Badge variant={match.status === 'finished' ? 'default' : 'secondary'} className="text-xs">
-                        {match.status === 'finished' ? 'Encerrado' : 'Agendado'}
-                      </Badge>
-                    </div>
-                    <div className="flex items-center gap-3 text-white font-medium">
-                      <span>{match.home_team?.name}</span>
-                      {match.status === 'finished' ? (
-                        <span className="text-lg font-bold text-gold-400">{match.home_score} × {match.away_score}</span>
-                      ) : (
-                        <span className="text-slate-500">vs</span>
-                      )}
-                      <span>{match.away_team?.name}</span>
-                    </div>
-                    {match.match_date && (
-                      <p className="text-xs text-slate-400 mt-1">{formatDate(match.match_date)}{match.location ? ` — ${match.location}` : ''}</p>
+            <Card key={match.id} className="card-hover">
+              <CardContent className="p-4 flex items-center gap-3">
+                <Link to={`/admin/partidas/${match.id}`} className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Badge variant="secondary" className="text-xs">{match.category?.name}</Badge>
+                    <Badge variant="outline" className="text-xs">{phaseLabel(match.phase)}</Badge>
+                    {match.phase === 'grupos' && (match as any).round === 2 && (
+                      <Badge variant="outline" className="text-xs text-gold-400 border-gold-500/30">2º Turno</Badge>
                     )}
+                    <Badge variant={match.status === 'finished' ? 'default' : 'secondary'} className="text-xs">
+                      {match.status === 'finished' ? 'Encerrado' : 'Agendado'}
+                    </Badge>
                   </div>
-                  <ChevronRight className="h-5 w-5 text-slate-500" />
-                </CardContent>
-              </Card>
-            </Link>
+                  <div className="flex items-center gap-3 text-white font-medium">
+                    <span>{match.home_team?.name}</span>
+                    {match.status === 'finished' ? (
+                      <span className="text-lg font-bold text-gold-400">{match.home_score} × {match.away_score}</span>
+                    ) : (
+                      <span className="text-slate-500">vs</span>
+                    )}
+                    <span>{match.away_team?.name}</span>
+                  </div>
+                  {match.match_date ? (
+                    <p className="text-xs text-slate-400 mt-1">{formatDate(match.match_date)}{match.location ? ` — ${match.location}` : ''}</p>
+                  ) : (
+                    <p className="text-xs text-gold-400/60 mt-1">📅 Sem data definida</p>
+                  )}
+                </Link>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <Button variant="ghost" size="icon" onClick={() => openSchedule(match)} title="Definir data/hora">
+                    <Calendar className="h-4 w-4 text-slate-400" />
+                  </Button>
+                  <Link to={`/admin/partidas/${match.id}`}>
+                    <ChevronRight className="h-5 w-5 text-slate-500" />
+                  </Link>
+                </div>
+              </CardContent>
+            </Card>
           ))}
           {filtered.length === 0 && (
             <div className="text-center py-8 text-slate-400">Nenhuma partida encontrada.</div>
@@ -192,9 +293,31 @@ export default function MatchesAdmin() {
                 </Select>
               </div>
             </div>
-            <div className="space-y-2">
-              <Label>Data e Hora (opcional)</Label>
-              <Input type="datetime-local" value={matchDate} onChange={e => setMatchDate(e.target.value)} />
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Data (Seg/Ter/Qui)</Label>
+                <Select value={matchDate} onValueChange={setMatchDate}>
+                  <SelectTrigger><SelectValue placeholder="Selecione a data" /></SelectTrigger>
+                  <SelectContent>
+                    {validDates.map(d => (
+                      <SelectItem key={d} value={d}>{formatDateLabel(d)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Horário</Label>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setMatchTime('20:00')}
+                    className={`flex-1 py-2 rounded-lg text-sm font-bold ${matchTime === '20:00' ? 'bg-pitch-600 text-white' : 'bg-navy-800 text-slate-400'}`}>
+                    20:00
+                  </button>
+                  <button type="button" onClick={() => setMatchTime('21:00')}
+                    className={`flex-1 py-2 rounded-lg text-sm font-bold ${matchTime === '21:00' ? 'bg-pitch-600 text-white' : 'bg-navy-800 text-slate-400'}`}>
+                    21:00
+                  </button>
+                </div>
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
@@ -216,6 +339,51 @@ export default function MatchesAdmin() {
             </div>
             <Button onClick={handleSave} className="w-full" disabled={saveMutation.isPending || !homeTeamId || !awayTeamId}>
               {saveMutation.isPending ? 'Salvando...' : 'Criar Partida'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Schedule editor dialog */}
+      <Dialog open={scheduleOpen} onOpenChange={setScheduleOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Calendar className="h-5 w-5 text-pitch-400" />
+              Definir Data e Local
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Data (Seg/Ter/Qui)</Label>
+              <Select value={scheduleDay} onValueChange={setScheduleDay}>
+                <SelectTrigger><SelectValue placeholder="Selecione a data" /></SelectTrigger>
+                <SelectContent>
+                  {validDates.map(d => (
+                    <SelectItem key={d} value={d}>{formatDateLabel(d)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Horário</Label>
+              <div className="flex gap-2">
+                <button onClick={() => setScheduleTime('20:00')}
+                  className={`flex-1 py-3 rounded-xl text-lg font-bold transition-all ${scheduleTime === '20:00' ? 'bg-pitch-600 text-white ring-2 ring-pitch-400' : 'bg-navy-800 text-slate-400 hover:bg-navy-700'}`}>
+                  20:00
+                </button>
+                <button onClick={() => setScheduleTime('21:00')}
+                  className={`flex-1 py-3 rounded-xl text-lg font-bold transition-all ${scheduleTime === '21:00' ? 'bg-pitch-600 text-white ring-2 ring-pitch-400' : 'bg-navy-800 text-slate-400 hover:bg-navy-700'}`}>
+                  21:00
+                </button>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Local</Label>
+              <Input value={scheduleLocation} onChange={e => setScheduleLocation(e.target.value)} placeholder="Campo do Condomínio" />
+            </div>
+            <Button onClick={handleSaveSchedule} className="w-full" disabled={scheduleSaving}>
+              {scheduleSaving ? 'Salvando...' : 'Salvar Agenda'}
             </Button>
           </div>
         </DialogContent>

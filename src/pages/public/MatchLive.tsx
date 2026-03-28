@@ -112,17 +112,38 @@ export default function MatchLive() {
     refetchInterval: 5000,
   })
 
-  // All players for voting (from events)
-  const allPlayers = (() => {
-    if (!events) return []
-    const map = new Map<string, { id: string; name: string; teamName: string }>()
-    for (const e of events as MatchEvent[]) {
-      if (e.player_id && e.player && !map.has(e.player_id)) {
-        map.set(e.player_id, { id: e.player_id, name: e.player.name, teamName: e.team?.name ?? '' })
-      }
-    }
-    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name))
-  })()
+  // All players from both team rosters for voting
+  const { data: homeRosterLive } = useQuery({
+    queryKey: ['roster_live_home', match?.home_team_id, match?.category_id],
+    queryFn: async () => {
+      const { data } = await supabase.from('player_teams').select('*, player:players(name)')
+        .eq('team_id', match!.home_team_id).eq('category_id', match!.category_id).eq('status', 'active')
+      return data ?? []
+    },
+    enabled: !!match?.home_team_id && !!match?.category_id,
+    refetchInterval: 30000,
+  })
+  const { data: awayRosterLive } = useQuery({
+    queryKey: ['roster_live_away', match?.away_team_id, match?.category_id],
+    queryFn: async () => {
+      const { data } = await supabase.from('player_teams').select('*, player:players(name)')
+        .eq('team_id', match!.away_team_id).eq('category_id', match!.category_id).eq('status', 'active')
+      return data ?? []
+    },
+    enabled: !!match?.away_team_id && !!match?.category_id,
+    refetchInterval: 30000,
+  })
+
+  const allPlayers = [
+    ...(homeRosterLive?.map((pt: any) => ({ id: pt.player_id, name: pt.player?.name ?? '?', teamName: match?.home_team?.name ?? '' })) ?? []),
+    ...(awayRosterLive?.map((pt: any) => ({ id: pt.player_id, name: pt.player?.name ?? '?', teamName: match?.away_team?.name ?? '' })) ?? []),
+  ].sort((a, b) => a.teamName.localeCompare(b.teamName) || a.name.localeCompare(b.name))
+
+  // Voting state
+  const votingOpen = match?.voting_open === true
+  const votingClosedAt = match?.voting_closed_at ? new Date(match.voting_closed_at) : null
+  const isVotingClosed = votingClosedAt ? new Date() > votingClosedAt : false
+  const showResults = isVotingClosed || matchState === 'finished'
 
   const [chatMsg, setChatMsg] = useState('')
   const [sendingMsg, setSendingMsg] = useState(false)
@@ -492,8 +513,8 @@ export default function MatchLive() {
               </Card>
             )}
 
-            {/* Man of the Match */}
-            {match.motm_player_id && match.motm_player && (
+            {/* Destaque do Jogo — shown after voting closes */}
+            {showResults && match.motm_player_id && match.motm_player && (
               <Card className="bg-gradient-to-br from-amber-500/10 to-yellow-600/10 border-amber-500/30">
                 <CardContent className="p-4 flex items-center gap-4">
                   <div className="h-12 w-12 rounded-full bg-amber-500/20 flex items-center justify-center">
@@ -501,54 +522,57 @@ export default function MatchLive() {
                   </div>
                   <div>
                     <p className="text-xs text-amber-400 uppercase tracking-wider font-semibold">
-                      Craque da Partida
+                      Destaque do Jogo
                     </p>
                     <p className="text-lg font-bold text-white">
                       {match.motm_player.name}
                     </p>
+                    {votes && votes.length > 0 && (
+                      <p className="text-xs text-slate-400">{votes.length} voto{votes.length !== 1 ? 's' : ''}</p>
+                    )}
                   </div>
                 </CardContent>
               </Card>
             )}
 
-            {/* MOTM Vote — visible when match is active or finished, only for logged users */}
-            {!isPreMatch && allPlayers.length > 0 && (
-              <Card className="bg-[#0f1a2e] border-slate-700/50">
+            {/* Voting — only when open, results hidden until closed */}
+            {votingOpen && !isVotingClosed && allPlayers.length > 0 && (
+              <Card className="bg-[#0f1a2e] border-amber-500/20">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-2 mb-3">
                     <Trophy className="h-4 w-4 text-amber-400" />
                     <h3 className="text-sm font-semibold text-amber-400 uppercase tracking-wider">
-                      Vote no Craque da Partida
+                      Vote no Destaque do Jogo
                     </h3>
-                    {votes && <span className="text-xs text-slate-500">{votes.length} voto{votes.length !== 1 ? 's' : ''}</span>}
                   </div>
                   {user ? (
                     <div className="space-y-1.5">
-                      {allPlayers.map(p => {
-                        const count = voteCounts[p.id] ?? 0
-                        const isMyVote = myVote?.player_id === p.id
-                        const isTop = p.id === topVotedId && count > 0
+                      {/* Group by team */}
+                      {[match.home_team?.name, match.away_team?.name].map(teamName => {
+                        const teamPlayers = allPlayers.filter(p => p.teamName === teamName)
+                        if (teamPlayers.length === 0) return null
                         return (
-                          <button
-                            key={p.id}
-                            onClick={() => castVote(p.id)}
-                            disabled={votingFor !== null}
-                            className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-all ${
-                              isMyVote
-                                ? 'bg-amber-500/15 border border-amber-500/40'
-                                : 'bg-slate-800/40 border border-transparent hover:border-slate-600'
-                            }`}
-                          >
-                            {isTop && <Star className="h-3.5 w-3.5 text-amber-400 fill-amber-400 flex-shrink-0" />}
-                            <span className="text-sm text-white flex-1 truncate">{p.name}</span>
-                            <span className="text-xs text-slate-500">{p.teamName}</span>
-                            {count > 0 && (
-                              <span className={`text-xs font-bold rounded-full px-2 py-0.5 ${isTop ? 'bg-amber-500/20 text-amber-400' : 'bg-slate-700 text-slate-400'}`}>
-                                {count}
-                              </span>
-                            )}
-                            {isMyVote && <span className="text-[10px] text-amber-400">Seu voto</span>}
-                          </button>
+                          <div key={teamName}>
+                            <p className="text-[10px] text-slate-500 font-semibold uppercase mb-1 mt-2">{teamName}</p>
+                            {teamPlayers.map(p => {
+                              const isMyVote = myVote?.player_id === p.id
+                              return (
+                                <button
+                                  key={p.id}
+                                  onClick={() => castVote(p.id)}
+                                  disabled={votingFor !== null}
+                                  className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-all mb-1 ${
+                                    isMyVote
+                                      ? 'bg-amber-500/15 border border-amber-500/40'
+                                      : 'bg-slate-800/40 border border-transparent hover:border-slate-600'
+                                  }`}
+                                >
+                                  <span className="text-sm text-white flex-1 truncate">{p.name}</span>
+                                  {isMyVote && <span className="text-[10px] text-amber-400">✓ Seu voto</span>}
+                                </button>
+                              )
+                            })}
+                          </div>
                         )
                       })}
                     </div>
@@ -557,6 +581,38 @@ export default function MatchLive() {
                       <Link to="/login" className="text-pitch-400 hover:underline">Faça login</Link> para votar
                     </p>
                   )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Voting closed — show full results */}
+            {isVotingClosed && votes && votes.length > 0 && (
+              <Card className="bg-[#0f1a2e] border-slate-700/50">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Trophy className="h-4 w-4 text-amber-400" />
+                    <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">
+                      Resultado da Votação
+                    </h3>
+                    <span className="text-xs text-slate-500">{votes.length} voto{votes.length !== 1 ? 's' : ''}</span>
+                  </div>
+                  <div className="space-y-1">
+                    {Object.entries(voteCounts)
+                      .sort(([,a], [,b]) => b - a)
+                      .map(([pid, count], idx) => {
+                        const player = allPlayers.find(p => p.id === pid)
+                        const isWinner = pid === topVotedId
+                        return (
+                          <div key={pid} className={`flex items-center gap-2 px-3 py-2 rounded-lg ${isWinner ? 'bg-amber-500/10 border border-amber-500/30' : 'bg-slate-800/30'}`}>
+                            <span className="text-xs font-bold text-slate-500 w-5">{idx + 1}.</span>
+                            {isWinner && <Star className="h-3.5 w-3.5 text-amber-400 fill-amber-400" />}
+                            <span className={`text-sm flex-1 ${isWinner ? 'text-white font-bold' : 'text-slate-300'}`}>{player?.name ?? '?'}</span>
+                            <span className="text-xs text-slate-500">{player?.teamName}</span>
+                            <span className={`text-sm font-bold ${isWinner ? 'text-amber-400' : 'text-slate-500'}`}>{count}</span>
+                          </div>
+                        )
+                      })}
+                  </div>
                 </CardContent>
               </Card>
             )}

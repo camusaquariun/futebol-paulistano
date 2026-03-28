@@ -33,18 +33,20 @@ export default function ChampionshipsAdmin() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsChamp, setSettingsChamp] = useState<Championship | null>(null)
   const { data: champCats } = useChampionshipCategories(settingsChamp?.id)
-  const [catSettings, setCatSettings] = useState<Record<string, { turns: number; qualify_count: number; has_third_place: boolean }>>({})
+  const [catSettings, setCatSettings] = useState<Record<string, { turns: number; qualify_count: number; has_third_place: boolean; custom_title: string; custom_description: string }>>({})
   const [savingSettings, setSavingSettings] = useState(false)
 
   // Load settings when dialog opens
   useEffect(() => {
     if (champCats) {
-      const settings: Record<string, { turns: number; qualify_count: number; has_third_place: boolean }> = {}
+      const settings: Record<string, { turns: number; qualify_count: number; has_third_place: boolean; custom_title: string; custom_description: string }> = {}
       for (const cc of champCats) {
         settings[cc.category_id] = {
           turns: (cc as any).turns ?? 1,
           qualify_count: (cc as any).qualify_count ?? 4,
           has_third_place: (cc as any).has_third_place ?? true,
+          custom_title: (cc as any).custom_title ?? '',
+          custom_description: (cc as any).custom_description ?? '',
         }
       }
       setCatSettings(settings)
@@ -94,6 +96,8 @@ export default function ChampionshipsAdmin() {
           turns: settings.turns,
           qualify_count: settings.qualify_count,
           has_third_place: settings.has_third_place,
+          custom_title: settings.custom_title || null,
+          custom_description: settings.custom_description || null,
         })
         .eq('championship_id', settingsChamp.id)
         .eq('category_id', catId)
@@ -285,7 +289,28 @@ export default function ChampionshipsAdmin() {
                     </button>
                   </div>
 
-                  <div className="text-[10px] text-slate-500">
+                  <div className="grid grid-cols-2 gap-2 mt-2">
+                    <div className="space-y-1">
+                      <Label className="text-[10px] text-slate-500">Título na Home (opcional)</Label>
+                      <Input
+                        value={settings.custom_title}
+                        onChange={e => updateCatSetting(cc.category_id, 'custom_title', e.target.value)}
+                        placeholder={cat.name}
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[10px] text-slate-500">Descrição (opcional)</Label>
+                      <Input
+                        value={settings.custom_description}
+                        onChange={e => updateCatSetting(cc.category_id, 'custom_description', e.target.value)}
+                        placeholder="Ex: Acima de 35 anos"
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="text-[10px] text-slate-500 mt-2">
                     {settings.turns === 1 ? 'Turno único' : 'Ida e volta'} · {settings.qualify_count} classificam
                     {settings.has_third_place ? ' · Com 3º lugar' : ''}
                   </div>

@@ -64,6 +64,36 @@ export default function MatchDetail() {
     enabled: !!matchId,
   })
 
+  // Pending food donations for players in this match
+  const { data: pendingDonations, refetch: refetchDonations } = useQuery({
+    queryKey: ['food_donations', matchId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('food_donations')
+        .select('*, player:players(name)')
+        .eq('match_id', matchId!)
+      if (error) throw error
+      return data as { id: string; player_id: string; reason: string; required_kg: number; delivered: boolean; player: { name: string } }[]
+    },
+    enabled: !!matchId,
+  })
+
+  // Pending donations from PREVIOUS matches for players present in this match
+  const { data: carryOverDonations, refetch: refetchCarryOver } = useQuery({
+    queryKey: ['carry_over_donations', match?.championship_id, matchId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('food_donations')
+        .select('*, player:players(name)')
+        .eq('championship_id', match!.championship_id)
+        .eq('delivered', false)
+        .neq('match_id', matchId!)
+      if (error) throw error
+      return data as { id: string; match_id: string; player_id: string; reason: string; required_kg: number; delivered: boolean; player: { name: string } }[]
+    },
+    enabled: !!match?.championship_id && !!matchId,
+  })
+
   const matchState: MatchState = (match?.match_state as MatchState) ?? 'pre_match'
   const timer = useGameTimer(match?.half_start_time ?? null, matchState)
 
@@ -127,6 +157,12 @@ export default function MatchDetail() {
     refetchMatch()
   }
 
+  const verifyDonation = async (donationId: string) => {
+    await supabase.from('food_donations').update({ delivered: true, verified_at: new Date().toISOString() }).eq('id', donationId)
+    refetchDonations()
+    refetchCarryOver()
+  }
+
   const endFirstHalf = async () => {
     if (!matchId) return
     await supabase.from('matches').update({ match_state: 'halftime', half_start_time: null }).eq('id', matchId)
@@ -142,16 +178,45 @@ export default function MatchDetail() {
   const finalizeMatch = async () => {
     if (!match || !matchId || !existingEvents) return
     setSaving(true)
-    await supabase.from('matches').update({ match_state: 'finished', half_start_time: null }).eq('id', matchId)
+    // Close voting 5 min from now if still open, and finalize match
+    const updates: Record<string, any> = { match_state: 'finished', half_start_time: null }
+    if (match.voting_open && !match.voting_closed_at) {
+      updates.voting_closed_at = new Date(Date.now() + 5 * 60 * 1000).toISOString()
+    }
+    if (!match.voting_open) {
+      updates.voting_open = true
+      updates.voting_closed_at = new Date(Date.now() + 5 * 60 * 1000).toISOString()
+    }
+    await supabase.from('matches').update(updates).eq('id', matchId)
 
+    // Process cards: suspensions + food donations
+    const processedPlayers = new Set<string>()
     for (const event of existingEvents) {
       if (event.event_type === 'red_card') {
         await saveSuspension.mutateAsync({
           player_id: event.player_id, championship_id: match.championship_id,
           category_id: match.category_id, match_id_origin: matchId, reason: 'red_card', served: false,
         })
+        // Red card: 15kg food donation (once per player per match)
+        if (!processedPlayers.has(`red_${event.player_id}`)) {
+          processedPlayers.add(`red_${event.player_id}`)
+          await supabase.from('food_donations').upsert({
+            match_id: matchId, player_id: event.player_id,
+            championship_id: match.championship_id, category_id: match.category_id,
+            reason: 'red_card', required_kg: 15,
+          }, { onConflict: 'match_id,player_id,reason' })
+        }
       }
       if (event.event_type === 'yellow_card') {
+        // Yellow card: 5kg food donation (once per player per match)
+        if (!processedPlayers.has(`yellow_${event.player_id}`)) {
+          processedPlayers.add(`yellow_${event.player_id}`)
+          await supabase.from('food_donations').upsert({
+            match_id: matchId, player_id: event.player_id,
+            championship_id: match.championship_id, category_id: match.category_id,
+            reason: 'yellow_card', required_kg: 5,
+          }, { onConflict: 'match_id,player_id,reason' })
+        }
         const { data: yc } = await supabase.from('player_yellow_counts').select('yellow_count')
           .eq('player_id', event.player_id).eq('championship_id', match.championship_id)
           .eq('category_id', match.category_id).single()
@@ -497,10 +562,72 @@ export default function MatchDetail() {
                 <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-pitch-400 opacity-75" /><span className="relative inline-flex rounded-full h-2 w-2 bg-pitch-500" /></span>
                 Copiar link ao vivo
               </button>
+              <span className="mx-2 text-navy-600">|</span>
+              {/* Voting controls */}
+              {!match.voting_open ? (
+                <button
+                  onClick={async () => {
+                    await supabase.from('matches').update({ voting_open: true }).eq('id', matchId)
+                    refetchMatch()
+                  }}
+                  className="text-sm text-gold-400 hover:text-gold-300 flex items-center gap-1"
+                >
+                  🗳️ Abrir votação
+                </button>
+              ) : !match.voting_closed_at ? (
+                <button
+                  onClick={async () => {
+                    await supabase.from('matches').update({ voting_closed_at: new Date(Date.now() + 5 * 60 * 1000).toISOString() }).eq('id', matchId)
+                    refetchMatch()
+                  }}
+                  className="text-sm text-red-400 hover:text-red-300 flex items-center gap-1"
+                >
+                  🗳️ Encerrar votação (5min)
+                </button>
+              ) : (
+                <span className="text-sm text-slate-500">🗳️ Votação encerrada</span>
+              )}
             </div>
           )}
         </div>
       </Card>
+
+      {/* Pending food donations */}
+      {(() => {
+        const allPending = [
+          ...(carryOverDonations?.filter(d => {
+            // Only show for players present in this match
+            const present = attendance?.some(a => a.player_id === d.player_id && a.present)
+            return present || matchState === 'pre_match'
+          }) ?? []),
+        ]
+        if (allPending.length === 0) return null
+        return (
+          <Card className="border-gold-500/30 bg-gold-500/5">
+            <CardContent className="p-4">
+              <h3 className="text-sm font-semibold text-gold-400 mb-3 flex items-center gap-2">
+                🥫 Prendas de Alimentos Pendentes
+              </h3>
+              <div className="space-y-2">
+                {allPending.map(d => (
+                  <div key={d.id} className="flex items-center justify-between bg-navy-800 rounded-lg px-3 py-2">
+                    <div className="flex-1">
+                      <span className="text-sm font-medium text-white">{d.player?.name}</span>
+                      <span className="text-xs text-slate-400 ml-2">
+                        {d.reason === 'red_card' ? '🟥 Vermelho' : '🟨 Amarelo'} — <strong className="text-gold-400">{d.required_kg}kg</strong>
+                      </span>
+                    </div>
+                    <Button size="sm" variant="outline" className="border-pitch-500/50 text-pitch-400 hover:bg-pitch-600/10"
+                      onClick={() => verifyDonation(d.id)}>
+                      ✓ Entregou
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )
+      })()}
 
       {/* Two-column team panels */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
@@ -575,6 +702,32 @@ export default function MatchDetail() {
                     <Undo2 className="h-4 w-4" />
                   </button>
                 </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Admin: Set/Change Destaque do Jogo */}
+      {gameActive && (
+        <Card className="border-gold-500/20">
+          <CardContent className="p-4">
+            <h3 className="text-sm font-semibold text-gold-400 mb-3 flex items-center gap-2">
+              ⭐ Destaque do Jogo {motmPlayerId && <Badge variant="warning" className="text-[9px]">Definido</Badge>}
+            </h3>
+            <div className="grid grid-cols-2 gap-1 max-h-40 overflow-y-auto">
+              {[...homePlayers, ...awayPlayers].map(p => (
+                <button
+                  key={p.id}
+                  onClick={() => setMotm(p.id)}
+                  className={`px-2 py-1.5 rounded text-xs text-left transition-all ${
+                    motmPlayerId === p.id
+                      ? 'bg-gold-500/20 text-gold-400 border border-gold-500/40 font-bold'
+                      : 'bg-navy-800/50 text-slate-400 hover:bg-navy-700/50'
+                  }`}
+                >
+                  {p.jersey_number ? `${p.jersey_number}. ` : ''}{p.name}
+                </button>
               ))}
             </div>
           </CardContent>
@@ -807,6 +960,13 @@ function TeamPanel({
           </div>
         )}
 
+        {/* During match: late arrival notice */}
+        {isPlaying && players.some(p => !isPresent(p.id) && !suspendedPlayerIds.has(p.id)) && (
+          <div className="flex items-center gap-2 mb-2 px-1">
+            <span className="text-[10px] text-gold-400">⏰ Toque em um jogador ausente para registrar chegada atrasada</span>
+          </div>
+        )}
+
         {/* Player list */}
         <div className="space-y-1.5">
           {players.map(player => {
@@ -822,6 +982,12 @@ function TeamPanel({
                 key={player.id}
                 onClick={() => {
                   if (isPreMatch && !suspended) onToggleAttendance(player.id)
+                  else if (isPlaying && !present && !suspended) {
+                    // Late arrival: mark as present
+                    if (confirm(`Registrar ${player.name} como chegada atrasada?`)) {
+                      onToggleAttendance(player.id)
+                    }
+                  }
                   else if (isPlaying && present && !suspended) handlePlayerClick(player.id)
                 }}
                 disabled={suspended}
@@ -836,6 +1002,8 @@ function TeamPanel({
                     ? 'bg-gold-500/10 border-2 border-gold-500/30'
                     : isPlaying && present
                     ? 'bg-navy-800/50 hover:bg-navy-700/50 border-2 border-transparent active:border-pitch-500/50'
+                    : isPlaying && !present && !suspended
+                    ? 'bg-navy-800/20 border-2 border-dashed border-gold-500/20 hover:border-gold-500/40 opacity-50 hover:opacity-70'
                     : 'bg-navy-800/30 border-2 border-transparent opacity-40'
                 }`}
               >
@@ -848,6 +1016,7 @@ function TeamPanel({
                 <span className="text-base font-semibold text-white flex-1 truncate">
                   {player.name}
                   {suspended && <span className="text-red-400 text-xs ml-2">(Suspenso)</span>}
+                  {isPlaying && !present && !suspended && <span className="text-gold-400 text-[10px] ml-1">⏰ toque para adicionar</span>}
                 </span>
 
                 <div className="flex items-center gap-2 flex-shrink-0">
