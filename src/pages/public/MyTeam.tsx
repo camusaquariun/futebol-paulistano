@@ -5,7 +5,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Link } from 'react-router-dom'
-import { Users, Calendar, Shield, Crown, Trophy, ChevronRight, UserCircle, MapPin } from 'lucide-react'
+import { Users, Calendar, Shield, Crown, Trophy, ChevronRight, UserCircle, MapPin, Swords } from 'lucide-react'
 import { formatDate, phaseLabel } from '@/lib/utils'
 import { TeamBadge } from '@/components/TeamBadge'
 import { PlayerLinkWizard } from '@/components/PlayerLinkWizard'
@@ -183,14 +183,19 @@ function TeamView({ activeLink, myPlayerId, championship }: { activeLink: any; m
                   <h3 className="text-sm font-semibold text-slate-300 mb-3">Próximos Jogos</h3>
                   <div className="space-y-3">
                     {scheduledMatches.map((match: Match) => (
-                      <Link key={match.id} to={`/partidas/${match.id}/ao-vivo`}>
-                        <Card className="card-hover">
+                      <Link key={match.id} to={`/meu-time/preparo/${match.id}`}>
+                        <Card className="card-hover border-slate-700/50 hover:border-pitch-500/50 transition-all">
                           <CardContent className="p-4">
                             <div className="flex items-center justify-between mb-2">
                               <Badge variant="secondary" className="text-[10px]">
                                 {phaseLabel(match.phase)}
                               </Badge>
-                              <Badge variant="secondary">A realizar</Badge>
+                              <div className="flex items-center gap-2">
+                                <Badge variant="secondary">A realizar</Badge>
+                                <span className="text-[10px] text-pitch-400 font-medium flex items-center gap-0.5">
+                                  <Swords className="h-3 w-3" /> Preparar
+                                </span>
+                              </div>
                             </div>
                             <div className="flex items-center justify-between gap-4">
                               <div className="flex-1 text-right">

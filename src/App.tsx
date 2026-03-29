@@ -28,6 +28,7 @@ import MyTeam from '@/pages/public/MyTeam'
 import PostGame from '@/pages/public/PostGame'
 import TacticalBoardPage from '@/pages/public/TacticalBoardPage'
 import PreGame from '@/pages/public/PreGame'
+import PreGameRoom from '@/pages/public/PreGameRoom'
 import Friendlies from '@/pages/public/Friendlies'
 import Pool from '@/pages/public/Pool'
 import PoolLeaderboard from '@/pages/public/PoolLeaderboard'
@@ -55,6 +56,7 @@ export default function App() {
         <Route path="/arbitragem/:matchId" element={<RefereeLive />} />
         <Route path="/meu-time" element={<MyTeam />} />
         <Route path="/meu-time/jogo/:matchId" element={<PostGame />} />
+        <Route path="/meu-time/preparo/:matchId" element={<PreGameRoom />} />
         <Route path="/meu-time/prancheta" element={<TacticalBoardPage />} />
       </Route>
       <Route path="/login" element={<Login />} />
