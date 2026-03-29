@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMatches, useCategories, useTeamsByCategory, useSaveMatch, useChampionshipCategories } from '@/hooks/useSupabase'
 import { useAdminChampionship } from '@/hooks/useAdminChampionship'
 import { Card, CardContent } from '@/components/ui/card'
@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Calendar, Plus, Edit, ChevronRight } from 'lucide-react'
+import { Calendar, Plus, Edit, ChevronRight, Star } from 'lucide-react'
 import { formatDate, phaseLabel } from '@/lib/utils'
 import { Link } from 'react-router-dom'
 import type { MatchPhase } from '@/types/database'
@@ -143,6 +143,56 @@ export default function MatchesAdmin() {
     alert(`${returnMatches.length} jogos de volta gerados!`)
   }
 
+  // Fetch goal events for all finished matches
+  const finishedMatchIds = useMemo(() =>
+    matches?.filter(m => m.status === 'finished').map(m => m.id) ?? []
+  , [matches])
+
+  const { data: allGoalEvents } = useQuery({
+    queryKey: ['match_goals_bulk', championshipId, filterCategory],
+    queryFn: async () => {
+      const { data } = await supabase.from('match_events')
+        .select('match_id, event_type, player:players(name), team_id')
+        .in('match_id', finishedMatchIds)
+        .in('event_type', ['goal', 'own_goal'])
+      return data ?? []
+    },
+    enabled: finishedMatchIds.length > 0,
+  })
+
+  // Fetch MOTM player names for finished matches
+  const { data: motmData } = useQuery({
+    queryKey: ['match_motm_bulk', championshipId, filterCategory],
+    queryFn: async () => {
+      const { data } = await supabase.from('matches')
+        .select('id, motm_player:players!matches_motm_player_id_fkey(name)')
+        .in('id', finishedMatchIds)
+        .not('motm_player_id', 'is', null)
+      return data ?? []
+    },
+    enabled: finishedMatchIds.length > 0,
+  })
+
+  // Group goals by match
+  const goalsByMatch = useMemo(() => {
+    const map = new Map<string, Array<{ name: string; team_id: string; isOwnGoal: boolean }>>()
+    for (const e of allGoalEvents ?? []) {
+      const list = map.get(e.match_id) ?? []
+      list.push({ name: (e.player as any)?.name ?? '?', team_id: e.team_id, isOwnGoal: e.event_type === 'own_goal' })
+      map.set(e.match_id, list)
+    }
+    return map
+  }, [allGoalEvents])
+
+  // MOTM by match
+  const motmByMatch = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const m of motmData ?? []) {
+      map.set(m.id, (m.motm_player as any)?.name ?? '')
+    }
+    return map
+  }, [motmData])
+
   const filtered = matches?.filter(m =>
     filterPhase === 'all' || m.phase === filterPhase
   ) ?? []
@@ -226,8 +276,38 @@ export default function MatchesAdmin() {
                   {match.match_date ? (
                     <p className="text-xs text-slate-400 mt-1">{formatDate(match.match_date)}{match.location ? ` — ${match.location}` : ''}</p>
                   ) : (
-                    <p className="text-xs text-gold-400/60 mt-1">📅 Sem data definida</p>
+                    <p className="text-xs text-gold-400/60 mt-1">Sem data definida</p>
                   )}
+                  {match.status === 'finished' && (() => {
+                    const goals = goalsByMatch.get(match.id)
+                    const motm = motmByMatch.get(match.id)
+                    if (!goals?.length && !motm) return null
+                    const homeGoals = goals?.filter(g => !g.isOwnGoal ? g.team_id === match.home_team_id : g.team_id !== match.home_team_id) ?? []
+                    const awayGoals = goals?.filter(g => !g.isOwnGoal ? g.team_id === match.away_team_id : g.team_id !== match.away_team_id) ?? []
+                    return (
+                      <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-0.5 text-[11px]">
+                        {homeGoals.length > 0 && (
+                          <span className="text-slate-400">
+                            {homeGoals.map((g, i) => (
+                              <span key={i}>{i > 0 ? ', ' : ''}⚽ {g.name}{g.isOwnGoal ? ' (GC)' : ''}</span>
+                            ))}
+                          </span>
+                        )}
+                        {awayGoals.length > 0 && (
+                          <span className="text-slate-400">
+                            {awayGoals.map((g, i) => (
+                              <span key={i}>{i > 0 ? ', ' : ''}⚽ {g.name}{g.isOwnGoal ? ' (GC)' : ''}</span>
+                            ))}
+                          </span>
+                        )}
+                        {motm && (
+                          <span className="text-amber-400 flex items-center gap-0.5">
+                            <Star className="h-3 w-3 fill-amber-400" />{motm}
+                          </span>
+                        )}
+                      </div>
+                    )
+                  })()}
                 </Link>
                 <div className="flex items-center gap-1 flex-shrink-0">
                   <Button variant="ghost" size="icon" onClick={() => openSchedule(match)} title="Definir data/hora">

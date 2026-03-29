@@ -21,16 +21,19 @@ import TacticalBoardAdmin from '@/pages/admin/TacticalBoardAdmin'
 import FriendlyAdmin from '@/pages/admin/FriendlyAdmin'
 import RefereesAdmin from '@/pages/admin/Referees'
 import UsersAdmin from '@/pages/admin/UsersAdmin'
+import PoolAdmin from '@/pages/admin/PoolAdmin'
 import TeamProfile from '@/pages/public/TeamProfile'
 import MatchLive from '@/pages/public/MatchLive'
 import MyTeam from '@/pages/public/MyTeam'
 import PostGame from '@/pages/public/PostGame'
 import TacticalBoardPage from '@/pages/public/TacticalBoardPage'
+import PreGame from '@/pages/public/PreGame'
 import Friendlies from '@/pages/public/Friendlies'
 import Pool from '@/pages/public/Pool'
 import PoolLeaderboard from '@/pages/public/PoolLeaderboard'
 import RefereeDashboard from '@/pages/public/RefereeDashboard'
 import RefereeLive from '@/pages/public/RefereeLive'
+import PlayerProfile from '@/pages/admin/PlayerProfile'
 
 export default function App() {
   return (
@@ -42,6 +45,7 @@ export default function App() {
         <Route path="/artilharia" element={<Scorers />} />
         <Route path="/suspensoes" element={<Suspensions />} />
         <Route path="/times/:teamId" element={<TeamProfile />} />
+        <Route path="/times/:teamId/preparacao/:matchId" element={<PreGame />} />
         <Route path="/partidas/:matchId/ao-vivo" element={<MatchLive />} />
         <Route path="/partidas/:matchId/ao-vivo/:slug" element={<MatchLive />} />
         <Route path="/amistosos" element={<Friendlies />} />
@@ -61,6 +65,7 @@ export default function App() {
         <Route path="times" element={<TeamsAdmin />} />
         <Route path="times/:teamId" element={<TeamDetail />} />
         <Route path="jogadores" element={<PlayersAdmin />} />
+        <Route path="jogadores/:playerId" element={<PlayerProfile />} />
         <Route path="partidas" element={<MatchesAdmin />} />
         <Route path="partidas/:matchId" element={<MatchDetail />} />
         <Route path="suspensoes" element={<SuspensionsAdmin />} />
@@ -69,6 +74,7 @@ export default function App() {
         <Route path="amistosos" element={<FriendlyAdmin />} />
         <Route path="arbitragem" element={<RefereesAdmin />} />
         <Route path="usuarios" element={<UsersAdmin />} />
+        <Route path="bolao" element={<PoolAdmin />} />
       </Route>
     </Routes>
   )

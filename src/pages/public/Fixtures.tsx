@@ -1,9 +1,11 @@
+import { Link } from 'react-router-dom'
 import { useActiveChampionship, useMatches } from '@/hooks/useSupabase'
 import { CategoryTabs } from '@/components/CategoryTabs'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Calendar, MapPin } from 'lucide-react'
 import { formatDate, phaseLabel } from '@/lib/utils'
+import { TeamBadge } from '@/components/TeamBadge'
 import type { Match, MatchPhase } from '@/types/database'
 
 function MatchCard({ match }: { match: Match }) {
@@ -13,7 +15,8 @@ function MatchCard({ match }: { match: Match }) {
   const hasExtra = match.home_score_extra != null && match.away_score_extra != null
 
   return (
-    <Card className="card-hover">
+    <Link to={`/partidas/${match.id}/ao-vivo`} className="block">
+    <Card className="card-hover cursor-pointer transition-all hover:ring-1 hover:ring-pitch-500/50">
       <CardContent className="p-4">
         <div className="flex items-center justify-between mb-3">
           <Badge variant={isFinished ? 'default' : 'secondary'}>
@@ -29,10 +32,8 @@ function MatchCard({ match }: { match: Match }) {
         <div className="flex items-center justify-between gap-4">
           <div className="flex-1 text-right">
             <div className="flex items-center justify-end gap-2">
-              {match.home_team?.shield_url ? (
-                <img src={match.home_team.shield_url} alt="" className="h-8 w-8 rounded-full object-cover" />
-              ) : null}
               <span className="font-bold text-white text-sm sm:text-base">{match.home_team?.name}</span>
+              <TeamBadge name={match.home_team?.name} shieldUrl={match.home_team?.shield_url} size="md" />
             </div>
           </div>
           <div className="flex-shrink-0 text-center min-w-[80px]">
@@ -58,10 +59,8 @@ function MatchCard({ match }: { match: Match }) {
           </div>
           <div className="flex-1 text-left">
             <div className="flex items-center gap-2">
+              <TeamBadge name={match.away_team?.name} shieldUrl={match.away_team?.shield_url} size="md" />
               <span className="font-bold text-white text-sm sm:text-base">{match.away_team?.name}</span>
-              {match.away_team?.shield_url ? (
-                <img src={match.away_team.shield_url} alt="" className="h-8 w-8 rounded-full object-cover" />
-              ) : null}
             </div>
           </div>
         </div>
@@ -73,6 +72,7 @@ function MatchCard({ match }: { match: Match }) {
         )}
       </CardContent>
     </Card>
+    </Link>
   )
 }
 

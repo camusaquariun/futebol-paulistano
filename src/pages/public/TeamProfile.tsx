@@ -1,11 +1,10 @@
-import { useParams } from 'react-router-dom'
-import { Link } from 'react-router-dom'
+import { useParams, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { useActiveChampionship, useTeamRoster, useTeamMatches, useCategories, useStandings, useTeams } from '@/hooks/useSupabase'
+import { useActiveChampionship, useTeamRoster, useTeamMatches, useCategories, useTeams } from '@/hooks/useSupabase'
 import { supabase } from '@/lib/supabase'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { ChevronLeft, Shield, Trophy, Target, ShieldAlert, Calendar, MapPin, Crown, TrendingUp, Minus, UserCircle, Star } from 'lucide-react'
+import { ChevronLeft, Calendar, MapPin, Crown, TrendingUp, UserCircle, Star, ShieldAlert } from 'lucide-react'
 import { formatDate, phaseLabel } from '@/lib/utils'
 import type { Match, PlayerTeam } from '@/types/database'
 
@@ -39,12 +38,24 @@ function StatCard({ value, label, color }: { value: string | number; label: stri
   )
 }
 
+function YellowCardIcons({ count }: { count: number }) {
+  const shown = Math.min(count, 2)
+  if (shown === 0) return null
+  return (
+    <span className="flex items-center gap-0.5">
+      {Array.from({ length: shown }).map((_, i) => (
+        <span key={i} className="inline-block w-2.5 h-3.5 bg-yellow-400 rounded-[2px] shadow-sm" />
+      ))}
+    </span>
+  )
+}
+
 function TeamMatchCard({ match, teamId }: { match: Match; teamId: string }) {
   const isFinished = match.status === 'finished'
   const isHome = match.home_team_id === teamId
 
   return (
-    <Card className="card-hover">
+    <Card className="card-hover cursor-pointer transition-all hover:ring-1 hover:ring-pitch-500/50">
       <CardContent className="p-4">
         <div className="flex items-center justify-between mb-3">
           <Badge variant="secondary" className="text-[10px]">
@@ -172,6 +183,18 @@ export default function TeamProfile() {
   const yellowCards = events?.filter(e => e.event_type === 'yellow_card').length ?? 0
   const redCards = events?.filter(e => e.event_type === 'red_card').length ?? 0
 
+  // Per-player card counts
+  const playerYellowCards = new Map<string, number>()
+  const playerRedCards = new Map<string, number>()
+  events?.forEach(e => {
+    if (!e.player_id) return
+    if (e.event_type === 'yellow_card') {
+      playerYellowCards.set(e.player_id, (playerYellowCards.get(e.player_id) ?? 0) + 1)
+    } else if (e.event_type === 'red_card') {
+      playerRedCards.set(e.player_id, (playerRedCards.get(e.player_id) ?? 0) + 1)
+    }
+  })
+
   // Calculate stats from matches
   const finishedMatches = matches?.filter(m => m.status === 'finished') ?? []
 
@@ -201,6 +224,25 @@ export default function TeamProfile() {
   // Count MOTM awards: matches where motm_player_id matches any player in team roster
   const rosterPlayerIds = activeRoster?.roster.map(pt => pt.player_id) ?? []
   const motmCount = finishedMatches.filter(m => m.motm_player_id && rosterPlayerIds.includes(m.motm_player_id)).length
+
+  // Active suspensions for this team's players
+  const { data: suspendedSet } = useQuery({
+    queryKey: ['team_suspensions', teamId, activeRoster?.catId, championshipId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('suspensions')
+        .select('player_id')
+        .eq('championship_id', championshipId!)
+        .eq('category_id', activeRoster!.catId)
+        .eq('served', false)
+        .in('player_id', rosterPlayerIds)
+      return new Set(data?.map((s: any) => s.player_id) ?? [])
+    },
+    enabled: !!championshipId && !!activeRoster?.catId && rosterPlayerIds.length > 0,
+  })
+
+  // Map for player name lookup
+  const rosterNameMap = new Map(sortedRoster?.map(pt => [pt.player_id, pt.player?.name ?? '?']) ?? [])
 
   // Split matches
   const scheduledMatches = matches?.filter(m => m.status === 'scheduled') ?? []
@@ -275,6 +317,68 @@ export default function TeamProfile() {
         </div>
       </div>
 
+      {/* Cartões por Jogador */}
+      {(playerYellowCards.size > 0 || playerRedCards.size > 0) && (
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <ShieldAlert className="h-5 w-5 text-yellow-400" />
+            <h2 className="text-base font-semibold text-white">Cartões por Jogador</h2>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {playerYellowCards.size > 0 && (
+              <Card>
+                <CardContent className="p-4">
+                  <p className="text-xs font-semibold text-yellow-400 mb-3 flex items-center gap-1.5">
+                    <span className="inline-block w-3 h-4 bg-yellow-400 rounded-[2px]" />
+                    Cartões Amarelos
+                  </p>
+                  <div className="space-y-2">
+                    {[...playerYellowCards.entries()]
+                      .sort((a, b) => b[1] - a[1])
+                      .map(([pid, count]) => (
+                        <div key={pid} className="flex items-center justify-between text-sm">
+                          <span className="text-slate-300 truncate flex-1">{rosterNameMap.get(pid) ?? '?'}</span>
+                          <div className="flex items-center gap-1.5 ml-2">
+                            {Array.from({ length: Math.min(count, 3) }).map((_, i) => (
+                              <span key={i} className="inline-block w-2.5 h-3.5 bg-yellow-400 rounded-[2px]" />
+                            ))}
+                            {count >= 3 && <Badge variant="destructive" className="text-[9px] px-1 py-0">Susp</Badge>}
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+            {playerRedCards.size > 0 && (
+              <Card>
+                <CardContent className="p-4">
+                  <p className="text-xs font-semibold text-red-400 mb-3 flex items-center gap-1.5">
+                    <span className="inline-block w-3 h-4 bg-red-500 rounded-[2px]" />
+                    Cartões Vermelhos
+                  </p>
+                  <div className="space-y-2">
+                    {[...playerRedCards.entries()]
+                      .sort((a, b) => b[1] - a[1])
+                      .map(([pid, count]) => (
+                        <div key={pid} className="flex items-center justify-between text-sm">
+                          <span className="text-slate-300 truncate flex-1">{rosterNameMap.get(pid) ?? '?'}</span>
+                          <div className="flex items-center gap-1.5 ml-2">
+                            {Array.from({ length: count }).map((_, i) => (
+                              <span key={i} className="inline-block w-2.5 h-3.5 bg-red-500 rounded-[2px]" />
+                            ))}
+                            <Badge variant="destructive" className="text-[9px] px-1 py-0">Susp</Badge>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Elenco */}
       <div>
         <div className="flex items-center gap-2 mb-3">
@@ -292,6 +396,8 @@ export default function TeamProfile() {
             {sortedRoster.map((pt: PlayerTeam) => {
               const positions = pt.positions?.filter(p => p !== 'Jogador') ?? []
               const isGk = positions.includes('Goleiro')
+              const isSuspended = suspendedSet?.has(pt.player_id) ?? false
+              const yellows = playerYellowCards.get(pt.player_id) ?? 0
               return (
                 <div key={pt.id} className="flex items-center gap-3 py-3 px-4 border-b border-navy-800 last:border-0">
                   <div className={`h-9 w-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 relative ${isGk ? 'bg-gold-500/20 text-gold-400' : 'bg-navy-700 text-slate-300'}`}>
@@ -303,9 +409,13 @@ export default function TeamProfile() {
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <p className="font-medium text-white text-sm">{pt.player?.name}</p>
                       {pt.is_captain && <Badge variant="warning" className="text-[9px] px-1 py-0">C</Badge>}
+                      {isSuspended
+                        ? <Badge variant="destructive" className="text-[9px] px-1 py-0">Suspenso</Badge>
+                        : <YellowCardIcons count={yellows} />
+                      }
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-1 justify-end">
@@ -342,7 +452,9 @@ export default function TeamProfile() {
                 <h3 className="text-sm font-semibold text-slate-300 mb-3">Resultados</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {finishedMatches.map(match => (
-                    <TeamMatchCard key={match.id} match={match} teamId={teamId!} />
+                    <Link key={match.id} to={`/partidas/${match.id}/ao-vivo`} className="block">
+                      <TeamMatchCard match={match} teamId={teamId!} />
+                    </Link>
                   ))}
                 </div>
               </div>
@@ -353,7 +465,9 @@ export default function TeamProfile() {
                 <h3 className="text-sm font-semibold text-slate-300 mb-3">Proximos Jogos</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {scheduledMatches.map(match => (
-                    <TeamMatchCard key={match.id} match={match} teamId={teamId!} />
+                    <Link key={match.id} to={`/times/${teamId}/preparacao/${match.id}`} className="block">
+                      <TeamMatchCard match={match} teamId={teamId!} />
+                    </Link>
                   ))}
                 </div>
               </div>

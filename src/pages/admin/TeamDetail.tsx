@@ -1,5 +1,5 @@
 import { useParams, useNavigate } from 'react-router-dom'
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useTeams, useTeamRoster, useUpdatePlayerPositions, useSetCaptain, useCategories, useUpdateJerseyNumber } from '@/hooks/useSupabase'
 import { useAdminChampionship } from '@/hooks/useAdminChampionship'
 import { supabase } from '@/lib/supabase'
@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { ChevronLeft, Shield, UserCircle, Pencil, Save, X, Crown, AlertTriangle, UserPlus } from 'lucide-react'
+import { ChevronLeft, Shield, UserCircle, Pencil, Save, X, Crown, AlertTriangle, UserPlus, Camera, Trash2, RefreshCw } from 'lucide-react'
 import { ALL_POSITIONS } from '@/types/database'
 import type { PlayerTeam } from '@/types/database'
 
@@ -33,21 +33,44 @@ function PositionBadge({ pos }: { pos: string }) {
   )
 }
 
-function PlayerRow({ playerTeam, onMarkStatus }: { playerTeam: PlayerTeam; onMarkStatus?: (pt: PlayerTeam) => void }) {
+function PlayerRow({ playerTeam, onMarkStatus, onPhotoUpload, onPhotoDelete }: {
+  playerTeam: PlayerTeam
+  onMarkStatus?: (pt: PlayerTeam) => void
+  onPhotoUpload?: (playerId: string, file: File) => void
+  onPhotoDelete?: (playerId: string) => void
+}) {
   const positions = playerTeam.positions?.filter(p => p !== 'Jogador') ?? []
   const isGk = positions.includes('Goleiro')
   const isCaptain = playerTeam.is_captain
   const isInactive = playerTeam.status === 'injured' || playerTeam.status === 'withdrawn'
+  const [lightbox, setLightbox] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
+  const hasPhoto = !!playerTeam.player?.photo_url
 
   return (
     <div className={`flex items-center gap-3 py-3 px-4 border-b border-navy-800 last:border-0 ${isInactive ? 'opacity-50' : ''}`}>
-      <div className="h-9 w-9 rounded-full flex-shrink-0 relative">
-        {playerTeam.player?.photo_url ? (
-          <img src={playerTeam.player.photo_url} className="h-9 w-9 rounded-full object-cover border border-navy-600" />
-        ) : (
-          <div className={`h-9 w-9 rounded-full flex items-center justify-center text-sm font-bold ${isInactive ? 'bg-red-900/30 text-red-400' : isGk ? 'bg-gold-500/20 text-gold-400' : 'bg-navy-700 text-slate-300'}`}>
-            {playerTeam.jersey_number ?? '—'}
+      {/* Avatar */}
+      <div className="flex-shrink-0 relative" style={{ width: 36 }}>
+        <div
+          className="h-9 w-9 rounded-full relative overflow-hidden cursor-pointer group"
+          onClick={() => hasPhoto ? setLightbox(true) : fileRef.current?.click()}
+        >
+          {hasPhoto ? (
+            <img src={playerTeam.player!.photo_url!} className="h-9 w-9 rounded-full object-cover border border-navy-600" />
+          ) : (
+            <div className={`h-9 w-9 rounded-full flex items-center justify-center text-sm font-bold ${isInactive ? 'bg-red-900/30 text-red-400' : isGk ? 'bg-gold-500/20 text-gold-400' : 'bg-navy-700 text-slate-300'}`}>
+              {playerTeam.jersey_number != null ? playerTeam.jersey_number : '—'}
+            </div>
+          )}
+          <div className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+            <Camera className="h-3.5 w-3.5 text-white" />
           </div>
+        </div>
+        {/* Jersey number badge overlaid on bottom when photo exists */}
+        {hasPhoto && playerTeam.jersey_number != null && (
+          <span className="absolute -bottom-3 left-1/2 -translate-x-1/2 bg-navy-950 border-2 border-navy-600 text-white text-sm font-black leading-none px-2 py-1 rounded-full whitespace-nowrap shadow-lg">
+            {playerTeam.jersey_number}
+          </span>
         )}
         {isCaptain && !isInactive && (
           <div className="absolute -top-1 -right-1 bg-gold-500 rounded-full p-0.5">
@@ -59,7 +82,30 @@ function PlayerRow({ playerTeam, onMarkStatus }: { playerTeam: PlayerTeam; onMar
             <AlertTriangle className="h-2.5 w-2.5 text-white" />
           </div>
         )}
+        <input ref={fileRef} type="file" accept="image/*" className="hidden"
+          onChange={e => { if (e.target.files?.[0]) { onPhotoUpload?.(playerTeam.player_id, e.target.files[0]); setLightbox(false) } }} />
       </div>
+
+      {/* Lightbox */}
+      {lightbox && hasPhoto && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80" onClick={() => setLightbox(false)}>
+          <div className="relative flex flex-col items-center gap-4" onClick={e => e.stopPropagation()}>
+            <img src={playerTeam.player!.photo_url!} alt={playerTeam.player?.name} className="max-h-[70vh] max-w-[80vw] rounded-xl object-contain shadow-2xl" />
+            <p className="text-white font-semibold text-sm">{playerTeam.player?.name}</p>
+            <div className="flex gap-3">
+              <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()} className="flex items-center gap-1.5">
+                <RefreshCw className="h-3.5 w-3.5" />Substituir foto
+              </Button>
+              <Button size="sm" variant="destructive" onClick={() => { onPhotoDelete?.(playerTeam.player_id); setLightbox(false) }} className="flex items-center gap-1.5">
+                <Trash2 className="h-3.5 w-3.5" />Remover foto
+              </Button>
+            </div>
+            <button onClick={() => setLightbox(false)} className="absolute -top-3 -right-3 bg-navy-800 border border-navy-600 rounded-full p-1 text-slate-400 hover:text-white transition-colors">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
           <p className={`font-medium text-sm ${isInactive ? 'text-slate-500 line-through' : 'text-white'}`}>{playerTeam.player?.name}</p>
@@ -267,6 +313,15 @@ export default function TeamDetail() {
     const { data } = supabase.storage.from('player-photos').getPublicUrl(path)
     await supabase.from('players').update({ photo_url: data.publicUrl }).eq('id', playerId)
     queryClient.invalidateQueries({ queryKey: ['team_roster'] })
+    queryClient.invalidateQueries({ queryKey: ['player'] })
+    queryClient.invalidateQueries({ queryKey: ['players'] })
+  }
+
+  const handlePhotoDelete = async (playerId: string) => {
+    await supabase.from('players').update({ photo_url: null }).eq('id', playerId)
+    queryClient.invalidateQueries({ queryKey: ['team_roster'] })
+    queryClient.invalidateQueries({ queryKey: ['player'] })
+    queryClient.invalidateQueries({ queryKey: ['players'] })
   }
 
   const openStatusDialog = (pt: PlayerTeam) => {
@@ -419,7 +474,7 @@ export default function TeamDetail() {
                   settingCaptain={settingCaptain}
                 />
               ) : (
-                <PlayerRow key={pt.id} playerTeam={pt} onMarkStatus={openStatusDialog} />
+                <PlayerRow key={pt.id} playerTeam={pt} onMarkStatus={openStatusDialog} onPhotoUpload={handlePhotoUpload} onPhotoDelete={handlePhotoDelete} />
               )
             )}
           </div>

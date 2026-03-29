@@ -7,10 +7,11 @@ import { usePoolMatchBetsByMatch } from '@/hooks/useSupabase'
 import { formatDate, phaseLabel } from '@/lib/utils'
 import { calculateMatchPoints } from '@/lib/pool-points'
 import type { MatchEvent } from '@/types/database'
-import { ArrowLeft, Star, MapPin, Calendar, Clock, Send, Trophy, MessageCircle, Target } from 'lucide-react'
+import { ArrowLeft, Star, MapPin, Calendar, Clock, Send, Trophy, MessageCircle, Target, Users } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { TeamBadge } from '@/components/TeamBadge'
 
 type MatchState = 'pre_match' | 'first_half' | 'halftime' | 'second_half' | 'finished'
 
@@ -141,6 +142,25 @@ export default function MatchLive() {
     ...(awayRosterLive?.map((pt: any) => ({ id: pt.player_id, name: pt.player?.name ?? '?', teamName: match?.away_team?.name ?? '' })) ?? []),
   ].sort((a, b) => a.teamName.localeCompare(b.teamName) || a.name.localeCompare(b.name))
 
+  // Attendance: who was confirmed present
+  const { data: attendance } = useQuery({
+    queryKey: ['match_attendance_live', matchId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('match_attendance')
+        .select('player_id, team_id, present')
+        .eq('match_id', matchId!)
+      return data ?? []
+    },
+    enabled: !!matchId,
+    refetchInterval: 10000,
+  })
+  const presentIds = new Set(attendance?.filter((a: any) => a.present).map((a: any) => a.player_id) ?? [])
+  const hasAttendance = (attendance?.filter((a: any) => a.present).length ?? 0) > 0
+
+  // Players who appeared in events (fallback for matches without attendance data)
+  const eventPlayerIds = new Set(events?.map((e: MatchEvent) => e.player_id).filter(Boolean) ?? [])
+
   // Bolão bets for this match
   const { data: poolBets } = usePoolMatchBetsByMatch(matchId)
 
@@ -148,16 +168,20 @@ export default function MatchLive() {
     if (!poolBets || poolBets.length === 0 || match?.home_score == null || match?.away_score == null) {
       return null
     }
-    let exactCount = 0
-    let scoringCount = 0
-    let lostCount = 0
-    for (const bet of poolBets) {
+    const betsWithPts = poolBets.map(bet => {
       const pts = calculateMatchPoints(bet.home_score, bet.away_score, match.home_score!, match.away_score!)
-      if (pts === 15) exactCount++
-      if (pts > 0) scoringCount++
-      else lostCount++
-    }
-    return { total: poolBets.length, exactCount, scoringCount, lostCount }
+      const name = bet.user_email.includes('@bolao.demo')
+        ? bet.user_email.split('@')[0].replace(/\./g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+        : bet.user_email.split('@')[0]
+      return { ...bet, pts, name }
+    }).sort((a, b) => b.pts - a.pts)
+
+    const exactCount = betsWithPts.filter(b => b.pts === 15).length
+    const scoringCount = betsWithPts.filter(b => b.pts > 0).length
+    const lostCount = betsWithPts.filter(b => b.pts === 0).length
+    const top5 = betsWithPts.slice(0, 5)
+
+    return { total: poolBets.length, exactCount, scoringCount, lostCount, top5 }
   }, [poolBets, match?.home_score, match?.away_score])
 
   // Voting state
@@ -279,17 +303,7 @@ export default function MatchLive() {
             <div className="flex items-center justify-center gap-6 sm:gap-10">
               {/* Home team */}
               <div className="flex flex-col items-center gap-3">
-                {match.home_team?.shield_url ? (
-                  <img
-                    src={match.home_team.shield_url}
-                    alt={match.home_team.name}
-                    className="h-20 w-20 rounded-full object-cover border-2 border-slate-600"
-                  />
-                ) : (
-                  <div className="h-20 w-20 rounded-full bg-slate-700 flex items-center justify-center text-2xl font-bold text-slate-400">
-                    {match.home_team?.name?.charAt(0)}
-                  </div>
-                )}
+                <TeamBadge name={match.home_team?.name} shieldUrl={match.home_team?.shield_url} size="xl" />
                 <span className="font-bold text-white text-sm sm:text-base">
                   {match.home_team?.name}
                 </span>
@@ -299,17 +313,7 @@ export default function MatchLive() {
 
               {/* Away team */}
               <div className="flex flex-col items-center gap-3">
-                {match.away_team?.shield_url ? (
-                  <img
-                    src={match.away_team.shield_url}
-                    alt={match.away_team.name}
-                    className="h-20 w-20 rounded-full object-cover border-2 border-slate-600"
-                  />
-                ) : (
-                  <div className="h-20 w-20 rounded-full bg-slate-700 flex items-center justify-center text-2xl font-bold text-slate-400">
-                    {match.away_team?.name?.charAt(0)}
-                  </div>
-                )}
+                <TeamBadge name={match.away_team?.name} shieldUrl={match.away_team?.shield_url} size="xl" />
                 <span className="font-bold text-white text-sm sm:text-base">
                   {match.away_team?.name}
                 </span>
@@ -379,17 +383,7 @@ export default function MatchLive() {
                 <div className="flex items-center justify-between gap-4">
                   {/* Home */}
                   <div className="flex-1 text-center">
-                    {match.home_team?.shield_url ? (
-                      <img
-                        src={match.home_team.shield_url}
-                        alt={match.home_team.name}
-                        className="h-16 w-16 rounded-full object-cover mx-auto mb-2 border-2 border-slate-600"
-                      />
-                    ) : (
-                      <div className="h-16 w-16 rounded-full bg-slate-700 flex items-center justify-center text-xl font-bold text-slate-400 mx-auto mb-2">
-                        {match.home_team?.name?.charAt(0)}
-                      </div>
-                    )}
+                    <TeamBadge name={match.home_team?.name} shieldUrl={match.home_team?.shield_url} size="lg" className="mx-auto mb-2" />
                     <p className="font-bold text-white text-sm sm:text-base">
                       {match.home_team?.name}
                     </p>
@@ -441,6 +435,12 @@ export default function MatchLive() {
                         Encerrado
                       </Badge>
                     )}
+                    {match.match_state === 'finished' && match.motm_player && (
+                      <div className="mt-3 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full bg-gold-500/10 border border-gold-500/30">
+                        <Star className="h-3.5 w-3.5 text-gold-400 fill-gold-400" />
+                        <span className="text-xs font-bold text-gold-400">Destaque: {match.motm_player.name}</span>
+                      </div>
+                    )}
                     {(match.home_fouls > 0 || match.away_fouls > 0) && (
                       <p className="text-xs text-slate-500 mt-2">
                         Faltas: {match.home_fouls ?? 0} - {match.away_fouls ?? 0}
@@ -450,17 +450,7 @@ export default function MatchLive() {
 
                   {/* Away */}
                   <div className="flex-1 text-center">
-                    {match.away_team?.shield_url ? (
-                      <img
-                        src={match.away_team.shield_url}
-                        alt={match.away_team.name}
-                        className="h-16 w-16 rounded-full object-cover mx-auto mb-2 border-2 border-slate-600"
-                      />
-                    ) : (
-                      <div className="h-16 w-16 rounded-full bg-slate-700 flex items-center justify-center text-xl font-bold text-slate-400 mx-auto mb-2">
-                        {match.away_team?.name?.charAt(0)}
-                      </div>
-                    )}
+                    <TeamBadge name={match.away_team?.name} shieldUrl={match.away_team?.shield_url} size="lg" className="mx-auto mb-2" />
                     <p className="font-bold text-white text-sm sm:text-base">
                       {match.away_team?.name}
                     </p>
@@ -495,29 +485,66 @@ export default function MatchLive() {
 
             {/* Bolão stats */}
             {poolStats && poolStats.total > 0 && (
-              <Card className="bg-[#0f1a2e] border-slate-700/50">
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Target className="h-4 w-4 text-amber-400" />
-                    <h3 className="text-sm font-semibold text-amber-400 uppercase tracking-wider">
-                      Bolão
-                    </h3>
-                    <span className="text-xs text-slate-500">{poolStats.total} aposta{poolStats.total !== 1 ? 's' : ''}</span>
-                  </div>
-                  <div className="grid grid-cols-3 gap-3 text-center">
-                    <div className="bg-green-500/10 rounded-lg p-3 border border-green-500/20">
-                      <div className="text-2xl font-bold text-green-400">{poolStats.exactCount}</div>
-                      <div className="text-[10px] text-green-400/70 font-medium uppercase">Placar exato</div>
+              <Card className="bg-[#0f1a2e] border-amber-500/20">
+                <CardContent className="p-4 space-y-4">
+                  {/* Header */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Target className="h-4 w-4 text-amber-400" />
+                      <h3 className="text-sm font-bold text-amber-400 uppercase tracking-wider">Bolão</h3>
                     </div>
+                    <span className="text-xs text-slate-500 bg-slate-800/50 px-2 py-0.5 rounded-full">
+                      {poolStats.total} participante{poolStats.total !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+
+                  {/* Stats row */}
+                  <div className="grid grid-cols-3 gap-2 text-center">
                     <div className="bg-amber-500/10 rounded-lg p-3 border border-amber-500/20">
-                      <div className="text-2xl font-bold text-amber-400">{poolStats.scoringCount}</div>
-                      <div className="text-[10px] text-amber-400/70 font-medium uppercase">Pontuando</div>
+                      <div className="text-2xl font-extrabold text-amber-400">{poolStats.scoringCount}</div>
+                      <div className="text-[10px] text-amber-400/70 font-semibold uppercase tracking-wide mt-0.5">Pontuaram</div>
+                    </div>
+                    <div className="bg-green-500/10 rounded-lg p-3 border border-green-500/20">
+                      <div className="text-2xl font-extrabold text-green-400">{poolStats.exactCount}</div>
+                      <div className="text-[10px] text-green-400/70 font-semibold uppercase tracking-wide mt-0.5">Placar exato</div>
                     </div>
                     <div className="bg-red-500/10 rounded-lg p-3 border border-red-500/20">
-                      <div className="text-2xl font-bold text-red-400">{poolStats.lostCount}</div>
-                      <div className="text-[10px] text-red-400/70 font-medium uppercase">Zerados</div>
+                      <div className="text-2xl font-extrabold text-red-400">{poolStats.lostCount}</div>
+                      <div className="text-[10px] text-red-400/70 font-semibold uppercase tracking-wide mt-0.5">Zerados</div>
                     </div>
                   </div>
+
+                  {/* Top 5 */}
+                  {poolStats.top5.length > 0 && (
+                    <div>
+                      <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider mb-2">
+                        Top {poolStats.top5.length} nesta partida
+                      </p>
+                      <div className="space-y-1.5">
+                        {poolStats.top5.map((entry, idx) => (
+                          <div key={entry.id} className="flex items-center gap-2.5">
+                            <span className={`text-xs font-extrabold w-5 text-center flex-shrink-0 ${
+                              idx === 0 ? 'text-amber-400' : 'text-slate-500'
+                            }`}>{idx + 1}</span>
+                            <div className="h-5 w-5 rounded-full bg-slate-700 flex items-center justify-center text-[9px] font-bold text-slate-300 flex-shrink-0">
+                              {entry.name.charAt(0)}
+                            </div>
+                            <span className="text-sm text-slate-200 flex-1 truncate">{entry.name}</span>
+                            <span className="text-xs text-slate-400 flex-shrink-0 tabular-nums">
+                              {entry.home_score} × {entry.away_score}
+                            </span>
+                            <span className={`text-xs font-bold flex-shrink-0 min-w-[36px] text-right ${
+                              entry.pts === 15 ? 'text-green-400' :
+                              entry.pts >= 8 ? 'text-amber-400' :
+                              entry.pts > 0 ? 'text-slate-300' : 'text-red-400'
+                            }`}>
+                              {entry.pts} pts
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )}
@@ -548,7 +575,8 @@ export default function MatchLive() {
                             <p className="text-sm font-semibold text-white truncate">
                               {event.event_type === 'own_goal' ? <span className="text-red-400">Gol Contra</span> : (event.player?.name ?? 'Jogador')}
                             </p>
-                            <p className={`text-xs font-medium truncate ${isHome ? 'text-blue-400' : 'text-red-400'}`}>
+                            <p className={`text-xs font-medium truncate flex items-center gap-1 ${isHome ? 'text-blue-400' : 'text-red-400'}`}>
+                              {event.team?.shield_url && <img src={event.team.shield_url} alt="" className="h-4 w-4 rounded-full object-cover inline" />}
                               {event.team?.name}
                             </p>
                           </div>
@@ -666,6 +694,97 @@ export default function MatchLive() {
                 </CardContent>
               </Card>
             )}
+
+            {/* Players roster — present/confirmed */}
+            {!isPreMatch && !!((homeRosterLive?.length || 0) + (awayRosterLive?.length || 0)) && (() => {
+              const isFinished = matchState === 'finished'
+
+              // Decide which players to show:
+              // - finished + no attendance → show players with events
+              // - finished + attendance → show present players
+              // - live → show present players (confirmed by referee)
+              const filterPlayer = (playerId: string) => {
+                if (isFinished && !hasAttendance) return eventPlayerIds.has(playerId)
+                return presentIds.has(playerId)
+              }
+
+              const homeShown = homeRosterLive?.filter((pt: any) => filterPlayer(pt.player_id)) ?? []
+              const awayShown = awayRosterLive?.filter((pt: any) => filterPlayer(pt.player_id)) ?? []
+              if (homeShown.length === 0 && awayShown.length === 0) return null
+
+              const playerEvents = (playerId: string) => events?.filter((e: MatchEvent) => e.player_id === playerId) ?? []
+
+              const title = isFinished ? 'Participantes da Partida' : 'Jogadores Confirmados'
+
+              return (
+                <Card className="bg-[#0f1a2e] border-slate-700/50">
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-2 mb-4">
+                      <Users className="h-4 w-4 text-slate-400" />
+                      <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">{title}</h3>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      {/* Home */}
+                      <div>
+                        <div className="flex items-center gap-2 mb-2">
+                          {match.home_team?.shield_url && <img src={match.home_team.shield_url} alt="" className="h-5 w-5 rounded-full object-cover" />}
+                          <span className="text-xs font-semibold text-blue-400 truncate">{match.home_team?.name}</span>
+                        </div>
+                        <div className="space-y-1">
+                          {homeShown.map((pt: any) => {
+                            const evts = playerEvents(pt.player_id)
+                            const goals = evts.filter((e: MatchEvent) => e.event_type === 'goal').length
+                            const yellows = evts.filter((e: MatchEvent) => e.event_type === 'yellow_card').length
+                            const reds = evts.filter((e: MatchEvent) => e.event_type === 'red_card').length
+                            return (
+                              <div key={pt.player_id} className="flex items-center gap-1.5 text-xs py-1 border-b border-slate-800 last:border-0">
+                                {pt.jersey_number != null && (
+                                  <span className="text-[10px] text-slate-500 font-bold w-5 text-right flex-shrink-0">{pt.jersey_number}</span>
+                                )}
+                                <span className="text-slate-200 flex-1 truncate">{pt.player?.name}</span>
+                                <span className="flex items-center gap-0.5">
+                                  {goals > 0 && <span className="text-[10px]">{'⚽'.repeat(goals)}</span>}
+                                  {yellows > 0 && Array.from({length: yellows}).map((_, i) => <span key={i} className="inline-block w-2 h-2.5 bg-yellow-400 rounded-[2px]" />)}
+                                  {reds > 0 && Array.from({length: reds}).map((_, i) => <span key={i} className="inline-block w-2 h-2.5 bg-red-500 rounded-[2px]" />)}
+                                </span>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                      {/* Away */}
+                      <div>
+                        <div className="flex items-center gap-2 mb-2">
+                          {match.away_team?.shield_url && <img src={match.away_team.shield_url} alt="" className="h-5 w-5 rounded-full object-cover" />}
+                          <span className="text-xs font-semibold text-red-400 truncate">{match.away_team?.name}</span>
+                        </div>
+                        <div className="space-y-1">
+                          {awayShown.map((pt: any) => {
+                            const evts = playerEvents(pt.player_id)
+                            const goals = evts.filter((e: MatchEvent) => e.event_type === 'goal').length
+                            const yellows = evts.filter((e: MatchEvent) => e.event_type === 'yellow_card').length
+                            const reds = evts.filter((e: MatchEvent) => e.event_type === 'red_card').length
+                            return (
+                              <div key={pt.player_id} className="flex items-center gap-1.5 text-xs py-1 border-b border-slate-800 last:border-0">
+                                {pt.jersey_number != null && (
+                                  <span className="text-[10px] text-slate-500 font-bold w-5 text-right flex-shrink-0">{pt.jersey_number}</span>
+                                )}
+                                <span className="text-slate-200 flex-1 truncate">{pt.player?.name}</span>
+                                <span className="flex items-center gap-0.5">
+                                  {goals > 0 && <span className="text-[10px]">{'⚽'.repeat(goals)}</span>}
+                                  {yellows > 0 && Array.from({length: yellows}).map((_, i) => <span key={i} className="inline-block w-2 h-2.5 bg-yellow-400 rounded-[2px]" />)}
+                                  {reds > 0 && Array.from({length: reds}).map((_, i) => <span key={i} className="inline-block w-2 h-2.5 bg-red-500 rounded-[2px]" />)}
+                                </span>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )
+            })()}
 
             {/* Chat */}
             {!isPreMatch && (

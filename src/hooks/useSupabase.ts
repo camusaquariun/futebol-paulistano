@@ -111,7 +111,7 @@ export function usePlayersByChampionship(championshipId: string | undefined) {
       const teamIds = teams.map(t => t.id)
       const { data, error } = await supabase
         .from('player_teams')
-        .select('player:players(*)')
+        .select('player:players!player_teams_player_id_fkey(*)')
         .in('team_id', teamIds)
       if (error) throw error
       // Deduplicate players (a player may be on multiple teams)
@@ -136,7 +136,7 @@ export function useTeamRoster(teamId: string | undefined, categoryId: string | u
     queryFn: async () => {
       const { data, error } = await supabase
         .from('player_teams')
-        .select('*, player:players(*)')
+        .select('*, player:players!player_teams_player_id_fkey(*)')
         .eq('team_id', teamId!)
         .eq('category_id', categoryId!)
       if (error) throw error
@@ -212,7 +212,7 @@ export function usePlayerTeams(playerId?: string) {
   return useQuery({
     queryKey: ['player_teams', playerId],
     queryFn: async () => {
-      let query = supabase.from('player_teams').select('*, player:players(*), team:teams(*), category:categories(*)')
+      let query = supabase.from('player_teams').select('*, player:players!player_teams_player_id_fkey(*), team:teams(*), category:categories(*)')
       if (playerId) query = query.eq('player_id', playerId)
       const { data, error } = await query
       if (error) throw error
@@ -228,7 +228,7 @@ export function usePlayersByTeamCategory(teamId: string | undefined, categoryId:
     queryFn: async () => {
       const { data, error } = await supabase
         .from('player_teams')
-        .select('*, player:players(*)')
+        .select('*, player:players!player_teams_player_id_fkey(*)')
         .eq('team_id', teamId!)
         .eq('category_id', categoryId!)
       if (error) throw error

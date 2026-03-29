@@ -6,8 +6,9 @@ import { CategoryTabs } from '@/components/CategoryTabs'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
-import { BarChart3, Target, Shield, ShieldAlert, Calendar, Clock } from 'lucide-react'
+import { BarChart3, Target, Shield, ShieldAlert, Calendar, Clock, Star } from 'lucide-react'
 import { formatDate } from '@/lib/utils'
+import { TeamBadge } from '@/components/TeamBadge'
 import type { Standing } from '@/types/database'
 
 function CategoryHighlights({ categoryId }: { categoryId: string }) {
@@ -57,20 +58,43 @@ function CategoryHighlights({ categoryId }: { categoryId: string }) {
     enabled: !!championship?.id,
   })
 
-  const { data: topDonors } = useQuery({
-    queryKey: ['top_donors', championship?.id, categoryId],
+  // Top MOTM (destaque do jogo)
+  const { data: topMotm } = useQuery({
+    queryKey: ['top_motm', championship?.id, categoryId],
     queryFn: async () => {
-      const { data } = await supabase.from('food_donations')
-        .select('player_id, required_kg, delivered, player:players(name)')
+      const { data } = await supabase.from('matches')
+        .select('motm_player_id, motm_player:players!matches_motm_player_id_fkey(name)')
         .eq('championship_id', championship!.id)
         .eq('category_id', categoryId)
-        .eq('delivered', true)
+        .eq('status', 'finished')
+        .not('motm_player_id', 'is', null)
+      if (!data) return []
+      const counts: Record<string, { name: string; count: number }> = {}
+      for (const m of data as any[]) {
+        const pid = m.motm_player_id
+        if (!counts[pid]) counts[pid] = { name: m.motm_player?.name ?? '?', count: 0 }
+        counts[pid].count++
+      }
+      return Object.values(counts).sort((a, b) => b.count - a.count).slice(0, 5)
+    },
+    enabled: !!championship?.id,
+  })
+
+  // Donations calculated from cards: yellow=5kg, red=15kg
+  const { data: topDonors } = useQuery({
+    queryKey: ['top_donors_cards', championship?.id, categoryId],
+    queryFn: async () => {
+      const { data } = await supabase.from('match_events')
+        .select('player_id, event_type, player:players(name), match:matches!inner(championship_id, category_id)')
+        .in('event_type', ['yellow_card', 'red_card'])
+        .eq('match.championship_id', championship!.id)
+        .eq('match.category_id', categoryId)
       if (!data) return []
       const totals: Record<string, { name: string; kg: number }> = {}
-      for (const d of data as any[]) {
-        const pid = d.player_id
-        if (!totals[pid]) totals[pid] = { name: d.player?.name ?? '?', kg: 0 }
-        totals[pid].kg += d.required_kg
+      for (const e of data as any[]) {
+        const pid = e.player_id
+        if (!totals[pid]) totals[pid] = { name: e.player?.name ?? '?', kg: 0 }
+        totals[pid].kg += e.event_type === 'yellow_card' ? 5 : 15
       }
       return Object.values(totals).sort((a, b) => b.kg - a.kg).slice(0, 5)
     },
@@ -78,164 +102,57 @@ function CategoryHighlights({ categoryId }: { categoryId: string }) {
   })
 
   const sorted = standings?.slice().sort((a, b) => b.points - a.points || b.goal_difference - a.goal_difference) ?? []
-  const topScorer = scorers?.[0]
+  const top5Scorers = scorers?.slice(0, 5) ?? []
   const bestAttack = sorted.length > 0 ? [...sorted].sort((a, b) => b.goals_for - a.goals_for)[0] : null
   const bestDefense = sorted.length > 0 ? [...sorted].filter(t => t.matches_played > 0).sort((a, b) => a.goals_against - b.goals_against)[0] : null
 
   const nextMatches = matches
     ?.filter(m => m.status === 'scheduled' && m.match_date)
     .sort((a, b) => new Date(a.match_date!).getTime() - new Date(b.match_date!).getTime())
-    .slice(0, 3) ?? []
+    .slice(0, 6) ?? []
 
-  const hasData = topScorer || bestAttack?.goals_for || nextMatches.length > 0
+  const finishedMatches = matches
+    ?.filter(m => m.status === 'finished')
+    .sort((a, b) => new Date(b.match_date ?? 0).getTime() - new Date(a.match_date ?? 0).getTime()) ?? []
+
+  const hasData = top5Scorers.length > 0 || bestAttack?.goals_for || nextMatches.length > 0 || finishedMatches.length > 0
 
   if (!hasData) return null
 
   return (
     <div className="space-y-3 mb-4">
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-      {/* Top scorer */}
-      <Card className="bg-gradient-to-br from-gold-500/10 to-gold-600/5 border-gold-500/20">
-        <CardContent className="p-3">
-          <div className="flex items-center gap-1.5 mb-1">
-            <Target className="h-3.5 w-3.5 text-gold-400" />
-            <span className="text-[10px] text-gold-400 font-semibold uppercase">Artilheiro</span>
-          </div>
-          {topScorer ? (
-            <>
-              <p className="font-bold text-white text-sm truncate">{topScorer.player_name}</p>
-              <p className="text-xs text-slate-400">{topScorer.team_name} · <span className="text-gold-400 font-bold">{topScorer.goals} gols</span></p>
-            </>
-          ) : (
-            <p className="text-xs text-slate-500">Sem gols ainda</p>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Best attack */}
-      <Card className="bg-gradient-to-br from-pitch-500/10 to-pitch-600/5 border-pitch-500/20">
-        <CardContent className="p-3">
-          <div className="flex items-center gap-1.5 mb-1">
-            <Shield className="h-3.5 w-3.5 text-pitch-400" />
-            <span className="text-[10px] text-pitch-400 font-semibold uppercase">Melhor Ataque</span>
-          </div>
-          {bestAttack && bestAttack.goals_for > 0 ? (
-            <>
-              <p className="font-bold text-white text-sm truncate">{bestAttack.team_name}</p>
-              <p className="text-xs text-slate-400"><span className="text-pitch-400 font-bold">{bestAttack.goals_for} gols</span> marcados</p>
-            </>
-          ) : (
-            <p className="text-xs text-slate-500">Sem dados</p>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Best defense */}
-      <Card className="bg-gradient-to-br from-blue-500/10 to-blue-600/5 border-blue-500/20">
-        <CardContent className="p-3">
-          <div className="flex items-center gap-1.5 mb-1">
-            <ShieldAlert className="h-3.5 w-3.5 text-blue-400" />
-            <span className="text-[10px] text-blue-400 font-semibold uppercase">Melhor Defesa</span>
-          </div>
-          {bestDefense ? (
-            <>
-              <p className="font-bold text-white text-sm truncate">{bestDefense.team_name}</p>
-              <p className="text-xs text-slate-400"><span className="text-blue-400 font-bold">{bestDefense.goals_against} gols</span> sofridos</p>
-            </>
-          ) : (
-            <p className="text-xs text-slate-500">Sem dados</p>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Next matches */}
-      <Card className="bg-gradient-to-br from-purple-500/10 to-purple-600/5 border-purple-500/20">
-        <CardContent className="p-3">
-          <div className="flex items-center gap-1.5 mb-1">
-            <Calendar className="h-3.5 w-3.5 text-purple-400" />
-            <span className="text-[10px] text-purple-400 font-semibold uppercase">Próxima Rodada</span>
-          </div>
-          {nextMatches.length > 0 ? (
-            <div className="space-y-1">
-              {nextMatches.map(m => (
-                <div key={m.id} className="text-[10px]">
-                  <span className="text-white font-medium">{m.home_team?.name}</span>
-                  <span className="text-slate-500"> vs </span>
-                  <span className="text-white font-medium">{m.away_team?.name}</span>
-                  {m.match_date && (
-                    <span className="text-slate-500 ml-1 flex items-center gap-0.5 inline-flex">
-                      <Clock className="h-2.5 w-2.5" />
-                      {new Date(m.match_date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
-                      {' '}
-                      {new Date(m.match_date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-xs text-slate-500">Sem jogos agendados</p>
-          )}
-        </CardContent>
-      </Card>
-    </div>
-
-    {/* Top cards + donations row */}
-    {((topYellows && topYellows.length > 0) || (topReds && topReds.length > 0) || (topDonors && topDonors.length > 0)) && (
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        {/* Top yellow cards */}
-        {topYellows && topYellows.length > 0 && (
-          <Card className="bg-gradient-to-br from-yellow-500/5 to-yellow-600/5 border-yellow-500/20">
+      {/* Row 1: Top Destaques + Top Artilheiros */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {topMotm && topMotm.length > 0 && (
+          <Card className="bg-gradient-to-br from-amber-500/5 to-amber-600/5 border-amber-500/20">
             <CardContent className="p-3">
               <div className="flex items-center gap-1.5 mb-2">
-                <span className="text-base">🟨</span>
-                <span className="text-[10px] text-yellow-400 font-semibold uppercase">Top Cartões Amarelos</span>
+                <Star className="h-3.5 w-3.5 text-amber-400" />
+                <span className="text-[10px] text-amber-400 font-semibold uppercase">Top Destaques</span>
               </div>
               <div className="space-y-1">
-                {topYellows.map((p, i) => (
+                {topMotm.map((p, i) => (
                   <div key={i} className="flex items-center justify-between text-xs">
                     <span className="text-slate-300 truncate">{i + 1}. {p.name}</span>
-                    <span className="text-yellow-400 font-bold">{p.count}🟨</span>
+                    <span className="text-amber-400 font-bold flex-shrink-0 ml-1">{p.count}⭐</span>
                   </div>
                 ))}
               </div>
             </CardContent>
           </Card>
         )}
-
-        {/* Top red cards */}
-        {topReds && topReds.length > 0 && (
-          <Card className="bg-gradient-to-br from-red-500/5 to-red-600/5 border-red-500/20">
+        {top5Scorers.length > 0 && (
+          <Card className="bg-gradient-to-br from-gold-500/5 to-gold-600/5 border-gold-500/20">
             <CardContent className="p-3">
               <div className="flex items-center gap-1.5 mb-2">
-                <span className="text-base">🟥</span>
-                <span className="text-[10px] text-red-400 font-semibold uppercase">Top Cartões Vermelhos</span>
+                <Target className="h-3.5 w-3.5 text-gold-400" />
+                <span className="text-[10px] text-gold-400 font-semibold uppercase">Top Artilheiros</span>
               </div>
               <div className="space-y-1">
-                {topReds.map((p, i) => (
+                {top5Scorers.map((s, i) => (
                   <div key={i} className="flex items-center justify-between text-xs">
-                    <span className="text-slate-300 truncate">{i + 1}. {p.name}</span>
-                    <span className="text-red-400 font-bold">{p.count}🟥</span>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Top food donors */}
-        {topDonors && topDonors.length > 0 && (
-          <Card className="bg-gradient-to-br from-orange-500/5 to-orange-600/5 border-orange-500/20">
-            <CardContent className="p-3">
-              <div className="flex items-center gap-1.5 mb-2">
-                <span className="text-base">🥫</span>
-                <span className="text-[10px] text-orange-400 font-semibold uppercase">Maior Doador de Alimentos</span>
-              </div>
-              <div className="space-y-1">
-                {topDonors.map((p, i) => (
-                  <div key={i} className="flex items-center justify-between text-xs">
-                    <span className="text-slate-300 truncate">{i + 1}. {p.name}</span>
-                    <span className="text-orange-400 font-bold">{p.kg}kg</span>
+                    <span className="text-slate-300 truncate">{i + 1}. {s.player_name}</span>
+                    <span className="text-gold-400 font-bold flex-shrink-0 ml-1">{s.goals}⚽</span>
                   </div>
                 ))}
               </div>
@@ -243,7 +160,184 @@ function CategoryHighlights({ categoryId }: { categoryId: string }) {
           </Card>
         )}
       </div>
-    )}
+
+      {/* Row 2: Melhor Ataque + Melhor Defesa */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <Card className="bg-gradient-to-br from-pitch-500/10 to-pitch-600/5 border-pitch-500/20">
+          <CardContent className="p-3">
+            <div className="flex items-center gap-1.5 mb-1">
+              <Shield className="h-3.5 w-3.5 text-pitch-400" />
+              <span className="text-[10px] text-pitch-400 font-semibold uppercase">Melhor Ataque</span>
+            </div>
+            {bestAttack && bestAttack.goals_for > 0 ? (
+              <>
+                <p className="font-bold text-white text-sm truncate">{bestAttack.team_name}</p>
+                <p className="text-xs text-slate-400"><span className="text-pitch-400 font-bold">{bestAttack.goals_for} gols</span> marcados</p>
+              </>
+            ) : (
+              <p className="text-xs text-slate-500">Sem dados</p>
+            )}
+          </CardContent>
+        </Card>
+        <Card className="bg-gradient-to-br from-blue-500/10 to-blue-600/5 border-blue-500/20">
+          <CardContent className="p-3">
+            <div className="flex items-center gap-1.5 mb-1">
+              <ShieldAlert className="h-3.5 w-3.5 text-blue-400" />
+              <span className="text-[10px] text-blue-400 font-semibold uppercase">Melhor Defesa</span>
+            </div>
+            {bestDefense ? (
+              <>
+                <p className="font-bold text-white text-sm truncate">{bestDefense.team_name}</p>
+                <p className="text-xs text-slate-400"><span className="text-blue-400 font-bold">{bestDefense.goals_against} gols</span> sofridos</p>
+              </>
+            ) : (
+              <p className="text-xs text-slate-500">Sem dados</p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Row 3: Cartões + Doações */}
+      {((topYellows && topYellows.length > 0) || (topReds && topReds.length > 0) || (topDonors && topDonors.length > 0)) && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {topYellows && topYellows.length > 0 && (
+            <Card className="bg-gradient-to-br from-yellow-500/5 to-yellow-600/5 border-yellow-500/20">
+              <CardContent className="p-3">
+                <div className="flex items-center gap-1.5 mb-2">
+                  <span className="text-base">🟨</span>
+                  <span className="text-[10px] text-yellow-400 font-semibold uppercase">Top Cartões Amarelos</span>
+                </div>
+                <div className="space-y-1">
+                  {topYellows.map((p, i) => (
+                    <div key={i} className="flex items-center justify-between text-xs">
+                      <span className="text-slate-300 truncate">{i + 1}. {p.name}</span>
+                      <span className="text-yellow-400 font-bold">{p.count}🟨</span>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+          {topReds && topReds.length > 0 && (
+            <Card className="bg-gradient-to-br from-red-500/5 to-red-600/5 border-red-500/20">
+              <CardContent className="p-3">
+                <div className="flex items-center gap-1.5 mb-2">
+                  <span className="text-base">🟥</span>
+                  <span className="text-[10px] text-red-400 font-semibold uppercase">Top Cartões Vermelhos</span>
+                </div>
+                <div className="space-y-1">
+                  {topReds.map((p, i) => (
+                    <div key={i} className="flex items-center justify-between text-xs">
+                      <span className="text-slate-300 truncate">{i + 1}. {p.name}</span>
+                      <span className="text-red-400 font-bold">{p.count}🟥</span>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+          {topDonors && topDonors.length > 0 && (
+            <Card className="bg-gradient-to-br from-orange-500/5 to-orange-600/5 border-orange-500/20">
+              <CardContent className="p-3">
+                <div className="flex items-center gap-1.5 mb-2">
+                  <span className="text-base">🥫</span>
+                  <span className="text-[10px] text-orange-400 font-semibold uppercase">Maior Doador de Alimentos</span>
+                </div>
+                <div className="space-y-1">
+                  {topDonors.map((p, i) => (
+                    <div key={i} className="flex items-center justify-between text-xs">
+                      <span className="text-slate-300 truncate">{i + 1}. {p.name}</span>
+                      <span className="text-orange-400 font-bold">{p.kg}kg</span>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {/* Row 4: Próxima Rodada (full width) */}
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <Calendar className="h-4 w-4 text-purple-400" />
+          <span className="text-xs text-purple-400 font-semibold uppercase tracking-wider">Próxima Rodada</span>
+        </div>
+        {nextMatches.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {nextMatches.map(m => (
+              <Link key={m.id} to={`/partidas/${m.id}/ao-vivo`}>
+                <Card className="bg-[#0f1a2e] border-purple-500/20 hover:border-purple-500/50 transition-all cursor-pointer hover:ring-1 hover:ring-purple-500/30">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <TeamBadge name={m.home_team?.name} shieldUrl={m.home_team?.shield_url} size="sm" />
+                        <span className="text-sm font-semibold text-white truncate">{m.home_team?.name}</span>
+                      </div>
+                      <span className="text-xs font-bold text-slate-500 flex-shrink-0">VS</span>
+                      <div className="flex items-center gap-2 flex-1 min-w-0 justify-end">
+                        <span className="text-sm font-semibold text-white truncate">{m.away_team?.name}</span>
+                        <TeamBadge name={m.away_team?.name} shieldUrl={m.away_team?.shield_url} size="sm" />
+                      </div>
+                    </div>
+                    {m.match_date && (
+                      <div className="flex items-center justify-center gap-1.5 mt-3 text-xs text-slate-400">
+                        <Clock className="h-3 w-3" />
+                        {new Date(m.match_date).toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' })}
+                        {' '}
+                        {new Date(m.match_date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                    )}
+                    {m.location && (
+                      <p className="text-[10px] text-slate-500 text-center mt-1 truncate">{m.location}</p>
+                    )}
+                  </CardContent>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-slate-500">Sem jogos agendados</p>
+        )}
+      </div>
+
+      {/* Row 5: Resultados (finished matches) */}
+      {finishedMatches.length > 0 && (
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <Target className="h-4 w-4 text-slate-400" />
+            <span className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Resultados</span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {finishedMatches.map(m => (
+              <Link key={m.id} to={`/partidas/${m.id}/ao-vivo`}>
+                <Card className="bg-[#0f1a2e] border-slate-700/50 hover:border-pitch-500/50 transition-all cursor-pointer hover:ring-1 hover:ring-pitch-500/30">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <TeamBadge name={m.home_team?.name} shieldUrl={m.home_team?.shield_url} size="sm" />
+                        <span className="text-sm font-semibold text-white truncate">{m.home_team?.name}</span>
+                      </div>
+                      <div className="flex-shrink-0 text-center">
+                        <span className="text-lg font-extrabold text-gold-400">{m.home_score} <span className="text-slate-500">×</span> {m.away_score}</span>
+                      </div>
+                      <div className="flex items-center gap-2 flex-1 min-w-0 justify-end">
+                        <span className="text-sm font-semibold text-white truncate">{m.away_team?.name}</span>
+                        <TeamBadge name={m.away_team?.name} shieldUrl={m.away_team?.shield_url} size="sm" />
+                      </div>
+                    </div>
+                    {m.match_date && (
+                      <p className="text-[10px] text-slate-500 text-center mt-2">
+                        {new Date(m.match_date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -266,7 +360,7 @@ function StandingsTable({ categoryId }: { categoryId: string }) {
   // Merge: all teams with standings data (fill zeros for teams without finished matches)
   const merged: Standing[] = teams.map(team => {
     const found = standings?.find(s => s.team_id === team.id)
-    if (found) return found
+    if (found) return { ...found, shield_url: team.shield_url ?? found.shield_url }
     return {
       championship_id: championship!.id,
       category_id: categoryId,
@@ -302,7 +396,6 @@ function StandingsTable({ categoryId }: { categoryId: string }) {
 
   return (
     <div>
-      <CategoryHighlights categoryId={categoryId} />
       <div className="overflow-x-auto">
       <Table>
         <TableHeader>
@@ -349,15 +442,14 @@ function StandingsTable({ categoryId }: { categoryId: string }) {
                   <div className="flex items-center gap-2">
                     {(() => {
                       const teamData = teams?.find(t => t.id === team.team_id)
-                      const bg = teamData?.primary_color || '#1e293b'
-                      const fg = teamData?.secondary_color || '#94a3b8'
-                      return team.shield_url ? (
-                        <img src={team.shield_url} alt="" className="h-7 w-7 rounded-full object-cover" />
-                      ) : (
-                        <div className="h-7 w-7 rounded-full flex items-center justify-center text-xs font-bold border border-white/20"
-                          style={{ backgroundColor: bg, color: fg }}>
-                          {team.team_name.charAt(0)}
-                        </div>
+                      return (
+                        <TeamBadge
+                          name={team.team_name}
+                          shieldUrl={teamData?.shield_url ?? team.shield_url}
+                          primaryColor={teamData?.primary_color}
+                          secondaryColor={teamData?.secondary_color}
+                          size="sm"
+                        />
                       )
                     })()}
                     <Link to={`/times/${team.team_id}`} className="font-semibold text-white hover:text-pitch-400 transition-colors">{team.team_name}</Link>
@@ -405,6 +497,7 @@ function StandingsTable({ categoryId }: { categoryId: string }) {
         <span className="hidden sm:inline">CV = Cartões Vermelhos</span>
       </div>
       </div>
+      <CategoryHighlights categoryId={categoryId} />
     </div>
   )
 }

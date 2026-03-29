@@ -1,7 +1,8 @@
 import { Link, Outlet, useLocation } from 'react-router-dom'
-import { Trophy, BarChart3, Calendar, Target, ShieldAlert, LogIn, Users, Swords, Ticket, Gavel } from 'lucide-react'
+import { Trophy, BarChart3, Calendar, Target, ShieldAlert, LogIn, Users, Swords, Ticket, Gavel, Sun, Moon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/useAuth'
+import { useTheme } from '@/hooks/useTheme'
 
 const navItems = [
   { path: '/', label: 'Início', icon: Trophy },
@@ -16,6 +17,7 @@ const navItems = [
 export function PublicLayout() {
   const location = useLocation()
   const { user } = useAuth()
+  const { theme, toggleTheme } = useTheme()
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -70,10 +72,17 @@ export function PublicLayout() {
                   </Link>
                 </>
               )}
+              <button
+                onClick={toggleTheme}
+                className="ml-1 p-2 rounded-lg text-slate-400 hover:text-white hover:bg-navy-800 transition-colors"
+                title={theme === 'dark' ? 'Modo claro' : 'Modo escuro'}
+              >
+                {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              </button>
               {user ? (
                 <Link
                   to="/login"
-                  className="ml-2 flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-slate-500 hover:text-white hover:bg-navy-800 transition-colors"
+                  className="ml-1 flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-slate-500 hover:text-white hover:bg-navy-800 transition-colors"
                 >
                   <LogIn className="h-4 w-4" />
                   <span className="hidden md:inline">Admin</span>

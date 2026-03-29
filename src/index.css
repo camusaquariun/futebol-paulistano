@@ -37,17 +37,196 @@
 
 @layer base {
   * {
-    border-color: theme(colors.navy.700);
     box-sizing: border-box;
+  }
+
+  /* Dark theme (default) */
+  .dark * {
+    border-color: theme(colors.navy.700);
+  }
+
+  .dark body,
+  .dark {
+    background-color: theme(colors.navy.950);
+    color: #f1f5f9;
   }
 
   body {
     margin: 0;
-    background-color: theme(colors.navy.950);
-    color: #f1f5f9;
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Light theme */
+  .light * {
+    border-color: #e2e8f0;
+  }
+
+  .light body,
+  .light {
+    background-color: #f8fafc;
+    color: #1e293b;
+  }
+
+  /* Light theme overrides for common dark patterns */
+  .light .bg-navy-950,
+  .light .bg-navy-900 {
+    background-color: #ffffff !important;
+  }
+
+  .light .bg-navy-950\/95,
+  .light .bg-navy-950\/80 {
+    background-color: rgba(255, 255, 255, 0.95) !important;
+  }
+
+  .light .bg-navy-800 {
+    background-color: #f1f5f9 !important;
+  }
+
+  .light .bg-navy-900\/50,
+  .light .bg-navy-900\/30 {
+    background-color: rgba(241, 245, 249, 0.5) !important;
+  }
+
+  .light .bg-\[\#0f1a2e\] {
+    background-color: #ffffff !important;
+  }
+
+  .light .bg-slate-800,
+  .light .bg-slate-800\/50,
+  .light .bg-slate-800\/40,
+  .light .bg-slate-800\/30 {
+    background-color: #f1f5f9 !important;
+  }
+
+  .light .bg-slate-700 {
+    background-color: #e2e8f0 !important;
+  }
+
+  /* Text colors */
+  .light .text-white {
+    color: #0f172a !important;
+  }
+
+  .light .text-slate-300 {
+    color: #475569 !important;
+  }
+
+  .light .text-slate-400 {
+    color: #64748b !important;
+  }
+
+  .light .text-slate-500 {
+    color: #94a3b8 !important;
+  }
+
+  .light .text-slate-200 {
+    color: #334155 !important;
+  }
+
+  /* Border overrides */
+  .light .border-navy-700,
+  .light .border-navy-800,
+  .light .border-navy-600 {
+    border-color: #e2e8f0 !important;
+  }
+
+  .light .border-slate-700\/50,
+  .light .border-slate-600,
+  .light .border-slate-700 {
+    border-color: #e2e8f0 !important;
+  }
+
+  /* Cards and surfaces */
+  .light [class*="card"],
+  .light [data-slot="card"] {
+    background-color: #ffffff;
+    border-color: #e2e8f0;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  }
+
+  /* Gradient cards: keep gradient tint but lighter */
+  .light [class*="from-gold-500\/10"],
+  .light [class*="from-gold-500\/5"] {
+    background-image: linear-gradient(to bottom right, rgba(251, 191, 36, 0.06), rgba(245, 158, 11, 0.03)) !important;
+  }
+
+  .light [class*="from-amber-500\/10"],
+  .light [class*="from-amber-500\/5"] {
+    background-image: linear-gradient(to bottom right, rgba(245, 158, 11, 0.06), rgba(217, 119, 6, 0.03)) !important;
+  }
+
+  .light [class*="from-pitch-500\/10"] {
+    background-image: linear-gradient(to bottom right, rgba(26, 173, 98, 0.06), rgba(15, 138, 78, 0.03)) !important;
+  }
+
+  .light [class*="from-blue-500\/10"] {
+    background-image: linear-gradient(to bottom right, rgba(59, 130, 246, 0.06), rgba(37, 99, 235, 0.03)) !important;
+  }
+
+  .light [class*="from-purple-500\/10"] {
+    background-image: linear-gradient(to bottom right, rgba(168, 85, 247, 0.06), rgba(147, 51, 234, 0.03)) !important;
+  }
+
+  /* Input fields */
+  .light input,
+  .light textarea,
+  .light select {
+    background-color: #ffffff !important;
+    border-color: #cbd5e1 !important;
+    color: #1e293b !important;
+  }
+
+  .light input::placeholder,
+  .light textarea::placeholder {
+    color: #94a3b8 !important;
+  }
+
+  /* Badges */
+  .light .bg-pitch-600\/20 {
+    background-color: rgba(15, 138, 78, 0.12) !important;
+  }
+
+  .light .bg-gold-500\/20 {
+    background-color: rgba(245, 158, 11, 0.12) !important;
+  }
+
+  /* Scrollbar */
+  .light ::-webkit-scrollbar-track {
+    background: #f1f5f9;
+  }
+
+  .light ::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+  }
+
+  /* Table */
+  .light th {
+    background-color: #f8fafc !important;
+    color: #475569 !important;
+  }
+
+  .light tr {
+    border-color: #e2e8f0 !important;
+  }
+
+  .light .bg-pitch-600\/5 {
+    background-color: rgba(15, 138, 78, 0.04) !important;
+  }
+
+  .light .bg-red-600\/8 {
+    background-color: rgba(220, 38, 38, 0.06) !important;
+  }
+
+  /* Footer */
+  .light footer {
+    border-color: #e2e8f0;
+  }
+
+  /* Hover card shadow in light */
+  .light .card-hover:hover {
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.08);
   }
 }
 

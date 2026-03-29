@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { useMatch, useMatchEvents, useTeamRoster, useSaveSuspension, useSuspensions } from '@/hooks/useSupabase'
+import { useMatch, useMatchEvents, useTeamRoster, useSaveSuspension, useSuspensions, usePoolMatchBetsByMatch } from '@/hooks/useSupabase'
 import { supabase } from '@/lib/supabase'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ChevronLeft, Trophy, Star, Undo2, Clock, UserCheck, Play, Pause } from 'lucide-react'
 import { phaseLabel, formatDate } from '@/lib/utils'
+import { calculateMatchPoints } from '@/lib/pool-points'
 import type { MatchEvent, Player, PlayerTeam } from '@/types/database'
 import { useQueryClient, useQuery } from '@tanstack/react-query'
 
@@ -49,6 +50,7 @@ export default function MatchDetail() {
   const { data: awayRoster } = useTeamRoster(match?.away_team_id, match?.category_id)
   const { data: suspensions } = useSuspensions(match?.championship_id, match?.category_id)
   const saveSuspension = useSaveSuspension()
+  const { data: poolBets } = usePoolMatchBetsByMatch(matchId)
 
   // Attendance
   const { data: attendance, refetch: refetchAttendance } = useQuery({
@@ -105,10 +107,15 @@ export default function MatchDetail() {
   const [manualTeam, setManualTeam] = useState('')
   const [manualType, setManualType] = useState<'goal' | 'own_goal' | 'yellow_card' | 'red_card'>('goal')
   const [manualPlayer, setManualPlayer] = useState('')
-  const [manualMinute, setManualMinute] = useState('')
+  const [manualMinute, setManualMinute] = useState('1')
   const [manualHalf, setManualHalf] = useState(1)
   const [motmPlayerId, setMotmPlayerId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [editingEventId, setEditingEventId] = useState<string | null>(null)
+  const [editEventType, setEditEventType] = useState<'goal' | 'own_goal' | 'yellow_card' | 'red_card'>('goal')
+  const [editEventPlayer, setEditEventPlayer] = useState('')
+  const [editEventMinute, setEditEventMinute] = useState('')
+  const [editEventHalf, setEditEventHalf] = useState(1)
 
   useEffect(() => {
     if (match) {
@@ -384,6 +391,38 @@ export default function MatchDetail() {
     await supabase.from('matches').update({ motm_player_id: newId }).eq('id', matchId)
   }, [matchId, motmPlayerId])
 
+  // Directly adjust score for finished match corrections
+  const adjustScore = useCallback(async (side: 'home' | 'away', delta: number) => {
+    if (!matchId) return
+    if (side === 'home') {
+      const v = Math.max(0, homeScore + delta); setHomeScore(v)
+      await supabase.from('matches').update({ home_score: v }).eq('id', matchId)
+    } else {
+      const v = Math.max(0, awayScore + delta); setAwayScore(v)
+      await supabase.from('matches').update({ away_score: v }).eq('id', matchId)
+    }
+  }, [matchId, homeScore, awayScore])
+
+  const startEditEvent = (e: MatchEvent) => {
+    setEditingEventId(e.id)
+    setEditEventType(e.event_type as any)
+    setEditEventPlayer(e.player_id ?? '')
+    setEditEventMinute(String(e.minute ?? ''))
+    setEditEventHalf(e.half ?? 1)
+  }
+
+  const saveEventEdit = useCallback(async () => {
+    if (!editingEventId) return
+    await supabase.from('match_events').update({
+      event_type: editEventType,
+      player_id: editEventType === 'own_goal' ? null : (editEventPlayer || null),
+      minute: editEventMinute ? parseInt(editEventMinute) : null,
+      half: editEventHalf,
+    }).eq('id', editingEventId)
+    setEditingEventId(null)
+    refetchEvents()
+  }, [editingEventId, editEventType, editEventPlayer, editEventMinute, editEventHalf, refetchEvents])
+
   const countEvents = (teamId: string, eventType: string) =>
     existingEvents?.filter(e => e.team_id === teamId && e.event_type === eventType).length ?? 0
 
@@ -489,7 +528,7 @@ export default function MatchDetail() {
               </div>
             </div>
             <Button className="w-full" onClick={async () => {
-              if (!manualMinute) return
+              if (manualMinute === '') return
               await addManualEvent(
                 manualType === 'own_goal' ? null : (manualPlayer || null),
                 manualTeam,
@@ -498,7 +537,7 @@ export default function MatchDetail() {
                 manualHalf
               )
               setManualPlayer('')
-              setManualMinute('')
+              setManualMinute('1')
               setShowGlobalManual(false)
             }}>
               Lançar Evento
@@ -688,25 +727,91 @@ export default function MatchDetail() {
             <h3 className="text-sm font-semibold text-slate-400 mb-3">Eventos da Partida</h3>
             <div className="space-y-1">
               {[...existingEvents].reverse().map(e => (
-                <div key={e.id} className="flex items-center gap-2 text-sm py-2 px-2 border-b border-navy-800 last:border-0 rounded hover:bg-navy-800/50 group">
-                  <span className="text-[10px] font-bold text-slate-500 bg-navy-700 rounded px-1.5 py-0.5 min-w-[48px] text-center">
-                    {e.half === 2 ? '2ºT' : '1ºT'} {e.minute != null ? `${e.minute}'` : ''}
-                  </span>
-                  <span className="text-lg">
-                    {e.event_type === 'goal' && '⚽'}
-                    {e.event_type === 'own_goal' && '⚽'}
-                    {e.event_type === 'yellow_card' && '🟨'}
-                    {e.event_type === 'red_card' && '🟥'}
-                  </span>
-                  <span className="font-medium text-white flex-1">
-                    {e.event_type === 'own_goal' ? <span className="text-red-400">Gol Contra</span> : e.player?.name}
-                  </span>
-                  <span className="text-slate-500 text-xs">{e.team?.name}</span>
-                  <button onClick={() => undoEvent(e.id, e)} className="text-slate-600 hover:text-red-400 transition-colors p-1.5 rounded-md hover:bg-red-400/10" title="Desfazer">
-                    <Undo2 className="h-4 w-4" />
-                  </button>
+                <div key={e.id}>
+                  {editingEventId === e.id ? (
+                    /* Inline edit form */
+                    <div className="bg-navy-800 rounded-lg p-3 space-y-2 border border-pitch-500/30 mb-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-pitch-400">Editar Evento</span>
+                        <button onClick={() => setEditingEventId(null)} className="text-slate-400 hover:text-white text-xs">✕</button>
+                      </div>
+                      <div className="grid grid-cols-4 gap-1">
+                        {(['goal', 'own_goal', 'yellow_card', 'red_card'] as const).map(t => (
+                          <button key={t} onClick={() => setEditEventType(t)}
+                            className={`px-2 py-1.5 rounded text-xs font-bold ${editEventType === t ? 'bg-pitch-600 text-white' : 'bg-navy-700 text-slate-400 hover:bg-navy-600'}`}>
+                            {t === 'goal' ? '⚽ Gol' : t === 'own_goal' ? '⚽ G.C.' : t === 'yellow_card' ? '🟨' : '🟥'}
+                          </button>
+                        ))}
+                      </div>
+                      {editEventType !== 'own_goal' && (
+                        <select value={editEventPlayer} onChange={ev => setEditEventPlayer(ev.target.value)}
+                          className="w-full bg-navy-700 border border-navy-600 rounded px-2 py-1.5 text-sm text-white">
+                          <option value="">— Nenhum —</option>
+                          {[...homePlayers, ...awayPlayers].map(p => (
+                            <option key={p.id} value={p.id}>{p.jersey_number ? `${p.jersey_number} - ` : ''}{p.name}</option>
+                          ))}
+                        </select>
+                      )}
+                      <div className="grid grid-cols-2 gap-2">
+                        <input type="number" placeholder="Minuto" value={editEventMinute} onChange={ev => setEditEventMinute(ev.target.value)}
+                          className="bg-navy-700 border border-navy-600 rounded px-2 py-1.5 text-sm text-white placeholder:text-slate-500" />
+                        <select value={editEventHalf} onChange={ev => setEditEventHalf(Number(ev.target.value))}
+                          className="bg-navy-700 border border-navy-600 rounded px-2 py-1.5 text-sm text-white">
+                          <option value={1}>1º Tempo</option>
+                          <option value={2}>2º Tempo</option>
+                        </select>
+                      </div>
+                      <Button size="sm" className="w-full" onClick={saveEventEdit}>Salvar Evento</Button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 text-sm py-2 px-2 border-b border-navy-800 last:border-0 rounded hover:bg-navy-800/50 group">
+                      <span className="text-[10px] font-bold text-slate-500 bg-navy-700 rounded px-1.5 py-0.5 min-w-[48px] text-center">
+                        {e.half === 2 ? '2ºT' : '1ºT'} {e.minute != null ? `${e.minute}'` : ''}
+                      </span>
+                      <span className="text-lg">
+                        {e.event_type === 'goal' && '⚽'}
+                        {e.event_type === 'own_goal' && '⚽'}
+                        {e.event_type === 'yellow_card' && '🟨'}
+                        {e.event_type === 'red_card' && '🟥'}
+                      </span>
+                      <span className="font-medium text-white flex-1">
+                        {e.event_type === 'own_goal' ? <span className="text-red-400">Gol Contra</span> : e.player?.name}
+                      </span>
+                      <span className="text-slate-500 text-xs">{e.team?.name}</span>
+                      <button onClick={() => startEditEvent(e)} className="text-slate-600 hover:text-pitch-400 transition-colors p-1.5 rounded-md hover:bg-pitch-400/10 opacity-0 group-hover:opacity-100" title="Editar">
+                        ✏️
+                      </button>
+                      <button onClick={() => undoEvent(e.id, e)} className="text-slate-600 hover:text-red-400 transition-colors p-1.5 rounded-md hover:bg-red-400/10" title="Excluir">
+                        <Undo2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  )}
                 </div>
               ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Score correction (finished matches) */}
+      {matchState === 'finished' && (
+        <Card className="border-slate-600/30">
+          <CardContent className="p-4">
+            <h3 className="text-sm font-semibold text-slate-300 mb-3">Corrigir Placar</h3>
+            <div className="flex items-center justify-center gap-8">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-400 w-20 text-right truncate">{match.home_team?.name}</span>
+                <button onClick={() => adjustScore('home', -1)} className="h-7 w-7 rounded bg-red-500/20 text-red-400 hover:bg-red-500/30 font-bold text-sm flex items-center justify-center">−</button>
+                <span className="text-2xl font-extrabold text-white w-8 text-center">{homeScore}</span>
+                <button onClick={() => adjustScore('home', 1)} className="h-7 w-7 rounded bg-pitch-500/20 text-pitch-400 hover:bg-pitch-500/30 font-bold text-sm flex items-center justify-center">+</button>
+              </div>
+              <span className="text-slate-500 font-bold">×</span>
+              <div className="flex items-center gap-2">
+                <button onClick={() => adjustScore('away', -1)} className="h-7 w-7 rounded bg-red-500/20 text-red-400 hover:bg-red-500/30 font-bold text-sm flex items-center justify-center">−</button>
+                <span className="text-2xl font-extrabold text-white w-8 text-center">{awayScore}</span>
+                <button onClick={() => adjustScore('away', 1)} className="h-7 w-7 rounded bg-pitch-500/20 text-pitch-400 hover:bg-pitch-500/30 font-bold text-sm flex items-center justify-center">+</button>
+                <span className="text-xs text-slate-400 w-20 truncate">{match.away_team?.name}</span>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -737,6 +842,69 @@ export default function MatchDetail() {
           </CardContent>
         </Card>
       )}
+
+      {/* Bolão stats — finished matches with bets */}
+      {matchState === 'finished' && poolBets && poolBets.length > 0 && match?.home_score != null && match?.away_score != null && (() => {
+        const betsWithPts = poolBets.map(bet => {
+          const pts = bet.points ?? calculateMatchPoints(bet.home_score, bet.away_score, match.home_score!, match.away_score!)
+          const name = bet.user_email.includes('@bolao.demo')
+            ? bet.user_email.split('@')[0].replace(/\./g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())
+            : bet.user_email.split('@')[0]
+          return { ...bet, pts, name }
+        }).sort((a, b) => b.pts - a.pts)
+        const scored = betsWithPts.filter(b => b.pts > 0).length
+        const exact = betsWithPts.filter(b => b.pts === 15).length
+        const zero = betsWithPts.filter(b => b.pts === 0).length
+        const top5 = betsWithPts.slice(0, 5)
+        return (
+          <Card className="border-amber-500/20">
+            <CardContent className="p-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-bold text-amber-400 flex items-center gap-2">
+                  🎯 Bolão
+                </h3>
+                <span className="text-xs text-slate-500 bg-navy-800 px-2 py-0.5 rounded-full">
+                  {poolBets.length} participante{poolBets.length !== 1 ? 's' : ''}
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="bg-amber-500/10 rounded-lg p-3 border border-amber-500/20">
+                  <div className="text-2xl font-extrabold text-amber-400">{scored}</div>
+                  <div className="text-[10px] text-amber-400/70 font-semibold uppercase mt-0.5">Pontuaram</div>
+                </div>
+                <div className="bg-green-500/10 rounded-lg p-3 border border-green-500/20">
+                  <div className="text-2xl font-extrabold text-green-400">{exact}</div>
+                  <div className="text-[10px] text-green-400/70 font-semibold uppercase mt-0.5">Placar exato</div>
+                </div>
+                <div className="bg-red-500/10 rounded-lg p-3 border border-red-500/20">
+                  <div className="text-2xl font-extrabold text-red-400">{zero}</div>
+                  <div className="text-[10px] text-red-400/70 font-semibold uppercase mt-0.5">Zerados</div>
+                </div>
+              </div>
+              {top5.length > 0 && (
+                <div>
+                  <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider mb-2">Top {top5.length}</p>
+                  <div className="space-y-1.5">
+                    {top5.map((entry, idx) => (
+                      <div key={entry.id} className="flex items-center gap-2.5">
+                        <span className={`text-xs font-extrabold w-4 text-center flex-shrink-0 ${idx === 0 ? 'text-amber-400' : 'text-slate-500'}`}>{idx + 1}</span>
+                        <div className="h-5 w-5 rounded-full bg-navy-700 flex items-center justify-center text-[9px] font-bold text-slate-300 flex-shrink-0">
+                          {entry.name.charAt(0)}
+                        </div>
+                        <span className="text-sm text-slate-200 flex-1 truncate">{entry.name}</span>
+                        <span className="text-xs text-slate-500 flex-shrink-0 tabular-nums">{entry.home_score} × {entry.away_score}</span>
+                        <span className={`text-xs font-bold flex-shrink-0 min-w-[34px] text-right ${entry.pts === 15 ? 'text-green-400' : entry.pts >= 8 ? 'text-amber-400' : entry.pts > 0 ? 'text-slate-300' : 'text-red-400'}`}>
+                          {entry.pts} pts
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )
+      })()}
 
       {/* Fixed bottom bar */}
       <div className="fixed bottom-0 left-0 right-0 z-50 bg-navy-900/95 backdrop-blur border-t border-navy-700 p-3">
@@ -782,6 +950,21 @@ export default function MatchDetail() {
             <Button className="flex-1 h-14 text-lg font-bold bg-red-600 hover:bg-red-700" onClick={finalizeMatch} disabled={saving}>
               <Trophy className="h-5 w-5 mr-2" />{saving ? 'Finalizando...' : 'Finalizar Partida'}
             </Button>
+          )}
+
+          {matchState === 'finished' && (
+            <>
+              <Button variant="outline" className="h-14 px-4 text-sm font-semibold border-gold-500/50 text-gold-400 hover:bg-gold-500/10"
+                onClick={() => { setManualHalf(currentHalf); setShowGlobalManual(!showGlobalManual) }}>
+                + Evento
+              </Button>
+              <Button variant="outline" className="h-14 px-4 text-sm font-semibold border-red-600/50 text-red-400 hover:bg-red-600/10"
+                onClick={undoLastEvent} disabled={!existingEvents || existingEvents.length === 0}>
+                <Undo2 className="h-5 w-5 mr-1.5" />Desfazer
+              </Button>
+              <div className="flex-1" />
+              <span className="text-xs text-slate-500">Partida encerrada — edição disponível acima</span>
+            </>
           )}
         </div>
       </div>

@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Link } from 'react-router-dom'
 import { UserCircle, Plus, Edit, Trash2, X } from 'lucide-react'
 import type { Player } from '@/types/database'
 
@@ -101,8 +102,19 @@ export default function PlayersAdmin() {
           {filtered.map(player => (
             <Card key={player.id}>
               <CardContent className="p-4 flex items-center justify-between">
-                <p className="font-medium text-white">{player.name}</p>
-                <div className="flex gap-1">
+                <Link to={`/admin/jogadores/${player.id}`} className="flex items-center gap-2.5 flex-1 min-w-0 hover:opacity-80 transition-opacity">
+                  <div className="h-8 w-8 rounded-full overflow-hidden flex-shrink-0 border border-navy-600">
+                    {(player as any).photo_url ? (
+                      <img src={(player as any).photo_url} alt={player.name} className="h-full w-full object-cover" />
+                    ) : (
+                      <div className="h-full w-full bg-navy-700 flex items-center justify-center text-sm font-bold text-slate-300">
+                        {player.name.charAt(0)}
+                      </div>
+                    )}
+                  </div>
+                  <p className="font-medium text-white truncate">{player.name}</p>
+                </Link>
+                <div className="flex gap-1 flex-shrink-0">
                   <Button variant="ghost" size="icon" onClick={() => openEdit(player)}>
                     <Edit className="h-4 w-4" />
                   </Button>

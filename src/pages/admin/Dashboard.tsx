@@ -3,7 +3,7 @@ import { useAdminChampionship } from '@/hooks/useAdminChampionship'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Link } from 'react-router-dom'
-import { Calendar, CheckCircle, Clock, ShieldAlert, Trophy, Users, UserCircle, Upload } from 'lucide-react'
+import { Calendar, CheckCircle, Clock, ShieldAlert, Trophy, Users, UserCircle, Upload, Ticket } from 'lucide-react'
 
 export default function Dashboard() {
   const { selectedId: championshipId, selected: championship } = useAdminChampionship()
@@ -22,6 +22,7 @@ export default function Dashboard() {
     { to: '/admin/partidas', label: 'Partidas', icon: Calendar, color: 'text-purple-400' },
     { to: '/admin/suspensoes', label: 'Suspensões', icon: ShieldAlert, color: 'text-red-400' },
     { to: '/admin/importar', label: 'Importar CSV', icon: Upload, color: 'text-orange-400' },
+    { to: '/admin/bolao', label: 'Bolão', icon: Ticket, color: 'text-gold-400' },
   ]
 
   return (

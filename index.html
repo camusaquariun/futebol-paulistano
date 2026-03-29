@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="pt-BR" class="dark">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -10,6 +10,9 @@
     <title>Futebol Paulistano</title>
   </head>
   <body>
+    <script>
+      (function(){var t=localStorage.getItem('fp-theme');var c=t==='light'?'light':'dark';document.documentElement.className=c;})();
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

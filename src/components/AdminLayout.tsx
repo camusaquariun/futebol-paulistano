@@ -3,7 +3,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { AdminChampionshipProvider } from '@/hooks/useAdminChampionship'
 import { AdminChampionshipSelector } from '@/components/AdminChampionshipSelector'
 import {
-  LayoutDashboard, Trophy, Users, UserCircle, Calendar, ShieldAlert, Upload, LogOut, ChevronLeft, BarChart3, MapPin, Swords, Gavel, UserCheck,
+  LayoutDashboard, Trophy, Users, UserCircle, Calendar, ShieldAlert, Upload, LogOut, ChevronLeft, BarChart3, MapPin, Swords, Gavel, UserCheck, Ticket,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -21,6 +21,7 @@ const sidebarItems = [
   { path: '/admin/arbitragem', label: 'Arbitragem', icon: Gavel },
   { path: '/admin/usuarios', label: 'Usuarios', icon: UserCheck },
   { path: '/admin/amistosos', label: 'Amistosos', icon: Swords },
+  { path: '/admin/bolao', label: 'Bolão', icon: Ticket },
 ]
 
 export function AdminLayout() {
