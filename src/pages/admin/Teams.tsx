@@ -78,6 +78,9 @@ export default function TeamsAdmin() {
     )
   }
 
+  const [search, setSearch] = useState('')
+  const filteredTeams = teams?.filter(t => t.name.toLowerCase().includes(search.toLowerCase())) ?? []
+
   if (!championshipId) {
     return <div className="text-center py-12 text-slate-400">Selecione um campeonato no menu lateral.</div>
   }
@@ -92,11 +95,19 @@ export default function TeamsAdmin() {
         <Button onClick={openNew}><Plus className="h-4 w-4 mr-2" />Novo Time</Button>
       </div>
 
+      <input
+        type="text"
+        value={search}
+        onChange={e => setSearch(e.target.value)}
+        placeholder="Buscar time pelo nome..."
+        className="w-full sm:w-72 bg-navy-800 border border-navy-600 rounded-lg px-3 py-2 text-white text-sm placeholder:text-slate-500 focus:border-pitch-500 focus:outline-none"
+      />
+
       {isLoading ? (
         <div className="flex justify-center py-8"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-pitch-500" /></div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {teams?.map(team => (
+          {filteredTeams.map(team => (
             <Card key={team.id} className="card-hover">
               <CardContent className="p-4 flex items-center gap-4">
                 {team.shield_url ? (

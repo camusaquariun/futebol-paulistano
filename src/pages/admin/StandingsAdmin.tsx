@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { useAdminChampionship } from '@/hooks/useAdminChampionship'
 import { useStandings, useTeamsByCategory, useCategories, useChampionshipCategories } from '@/hooks/useSupabase'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
@@ -82,7 +83,7 @@ function CategoryStandings({ championshipId, categoryId }: { championshipId: str
                         {team.team_name.charAt(0)}
                       </div>
                     )}
-                    <span className="font-semibold text-white">{team.team_name}</span>
+                    <Link to={`/admin/times/${team.team_id}`} className="font-semibold text-white hover:text-pitch-400 transition-colors">{team.team_name}</Link>
                     {qualified && <Badge variant="default" className="ml-1 text-[10px] px-1.5 py-0">Classificado</Badge>}
                   </div>
                 </TableCell>
