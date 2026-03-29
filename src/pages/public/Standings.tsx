@@ -342,11 +342,34 @@ function CategoryHighlights({ categoryId }: { categoryId: string }) {
   )
 }
 
+function useTeamFouls(championshipId: string | undefined, categoryId: string) {
+  return useQuery({
+    queryKey: ['team_fouls', championshipId, categoryId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('matches')
+        .select('home_team_id, away_team_id, home_fouls, away_fouls')
+        .eq('championship_id', championshipId!)
+        .eq('category_id', categoryId)
+        .eq('status', 'finished')
+      if (!data) return {}
+      const totals: Record<string, number> = {}
+      for (const m of data as any[]) {
+        if (m.home_team_id) totals[m.home_team_id] = (totals[m.home_team_id] ?? 0) + (m.home_fouls ?? 0)
+        if (m.away_team_id) totals[m.away_team_id] = (totals[m.away_team_id] ?? 0) + (m.away_fouls ?? 0)
+      }
+      return totals
+    },
+    enabled: !!championshipId,
+  })
+}
+
 function StandingsTable({ categoryId }: { categoryId: string }) {
   const { data: championship } = useActiveChampionship()
   const { data: standings, isLoading: loadingStandings } = useStandings(championship?.id, categoryId)
   const { data: teams, isLoading: loadingTeams } = useTeamsByCategory(championship?.id, categoryId)
   const { data: champCategories } = useChampionshipCategories(championship?.id)
+  const { data: teamFouls = {} } = useTeamFouls(championship?.id, categoryId)
   const catConfig = champCategories?.find((cc: any) => cc.category_id === categoryId)
 
   if (loadingStandings || loadingTeams) {
@@ -412,6 +435,7 @@ function StandingsTable({ categoryId }: { categoryId: string }) {
             <TableHead className="text-center">SG</TableHead>
             <TableHead className="text-center hidden sm:table-cell">CA</TableHead>
             <TableHead className="text-center hidden sm:table-cell">CV</TableHead>
+            <TableHead className="text-center hidden sm:table-cell">FA</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -474,6 +498,9 @@ function StandingsTable({ categoryId }: { categoryId: string }) {
                 <TableCell className="text-center hidden sm:table-cell">
                   <span className="text-red-400">{team.red_cards}</span>
                 </TableCell>
+                <TableCell className="text-center hidden sm:table-cell">
+                  <span className="text-orange-400">{(teamFouls as any)[team.team_id] ?? 0}</span>
+                </TableCell>
               </TableRow>
             )
           })}
@@ -495,6 +522,7 @@ function StandingsTable({ categoryId }: { categoryId: string }) {
         <span>SG = Saldo de Gols</span>
         <span className="hidden sm:inline">CA = Cartões Amarelos</span>
         <span className="hidden sm:inline">CV = Cartões Vermelhos</span>
+        <span className="hidden sm:inline">FA = Faltas</span>
       </div>
       </div>
       <CategoryHighlights categoryId={categoryId} />

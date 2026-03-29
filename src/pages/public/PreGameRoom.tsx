@@ -42,7 +42,7 @@ function useComments(matchId: string | undefined, teamId: string | undefined) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('pregame_comments')
-        .select('*, player:players(id,name,photo_url)')
+        .select('*, player:players(id,name,photo_url), scenario:pregame_scenarios(id,title)')
         .eq('match_id', matchId!)
         .eq('team_id', teamId!)
         .order('created_at', { ascending: true })
@@ -51,6 +51,26 @@ function useComments(matchId: string | undefined, teamId: string | undefined) {
     },
     enabled: !!matchId && !!teamId,
     refetchInterval: 8000,
+    retry: 1,
+  })
+}
+
+function useScenarioComments(matchId: string | undefined, teamId: string | undefined, scenarioId: string | undefined) {
+  return useQuery({
+    queryKey: ['pregame_comments', matchId, teamId, scenarioId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('pregame_comments')
+        .select('*, player:players(id,name,photo_url)')
+        .eq('match_id', matchId!)
+        .eq('team_id', teamId!)
+        .eq('scenario_id', scenarioId!)
+        .order('created_at', { ascending: true })
+      if (error) throw error
+      return data ?? []
+    },
+    enabled: !!matchId && !!teamId && !!scenarioId,
+    refetchInterval: 10000,
     retry: 1,
   })
 }
@@ -68,13 +88,15 @@ function useScenarios(matchId: string | undefined, teamId: string | undefined) {
       if (error) throw error
       if (!scenarios || scenarios.length === 0) return []
       const ids = scenarios.map((s: any) => s.id)
-      const { data: players } = await supabase
-        .from('pregame_scenario_players')
-        .select('*')
-        .in('scenario_id', ids)
+      const userIds = [...new Set(scenarios.map((s: any) => s.created_by))]
+      const [{ data: scenPlayers }, { data: creators }] = await Promise.all([
+        supabase.from('pregame_scenario_players').select('*').in('scenario_id', ids),
+        supabase.from('players').select('user_id, name').in('user_id', userIds),
+      ])
       return scenarios.map((s: any) => ({
         ...s,
-        players: (players ?? []).filter((p: any) => p.scenario_id === s.id),
+        players: (scenPlayers ?? []).filter((p: any) => p.scenario_id === s.id),
+        creator_name: (creators ?? []).find((c: any) => c.user_id === s.created_by)?.name ?? null,
       }))
     },
     enabled: !!matchId && !!teamId,
@@ -150,11 +172,23 @@ function DiscussionTab({ matchId, teamId, myPlayer }: { matchId: string; teamId:
               </div>
               <div className={`max-w-[75%] ${isMe ? 'items-end' : 'items-start'} flex flex-col gap-0.5`}>
                 <span className="text-[10px] text-slate-500 px-1">{c.player?.name ?? 'Usuário'}</span>
+                {c.scenario && (
+                  <span className={`text-[9px] px-2 py-0.5 rounded-full bg-pitch-600/20 text-pitch-400 flex items-center gap-1 w-fit ${isMe ? 'self-end' : ''}`}>
+                    <MapPin className="h-2.5 w-2.5" /> {c.scenario.title}
+                  </span>
+                )}
                 <div className={`px-3 py-2 rounded-2xl text-sm ${isMe ? 'bg-pitch-600 text-white rounded-tr-sm' : 'bg-navy-800 text-slate-200 rounded-tl-sm'}`}>
                   {c.content}
                 </div>
                 <span className="text-[9px] text-slate-600 px-1">
-                  {new Date(c.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                  {(() => {
+                    const d = new Date(c.created_at)
+                    const today = new Date()
+                    const isToday = d.toDateString() === today.toDateString()
+                    const time = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+                    if (isToday) return time
+                    return `${d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} ${time}`
+                  })()}
                 </span>
               </div>
             </div>
@@ -182,9 +216,76 @@ function DiscussionTab({ matchId, teamId, myPlayer }: { matchId: string; teamId:
   )
 }
 
+function ScenarioDiscussion({ matchId, teamId, scenarioId, myPlayer }: {
+  matchId: string; teamId: string; scenarioId: string; myPlayer: any
+}) {
+  const { data: comments = [], isLoading } = useScenarioComments(matchId, teamId, scenarioId)
+  const queryClient = useQueryClient()
+  const { user } = useAuth()
+  const [text, setText] = useState('')
+  const [sending, setSending] = useState(false)
+  const bottomRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [comments])
+
+  const handleSend = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!text.trim() || !user) return
+    setSending(true)
+    await supabase.from('pregame_comments').insert({
+      match_id: matchId, team_id: teamId, scenario_id: scenarioId,
+      player_id: myPlayer?.id ?? null, user_id: user.id, content: text.trim(),
+    })
+    setText('')
+    queryClient.invalidateQueries({ queryKey: ['pregame_comments', matchId, teamId, scenarioId] })
+    queryClient.invalidateQueries({ queryKey: ['pregame_comments', matchId, teamId] })
+    setSending(false)
+  }
+
+  return (
+    <div className="mt-4 pt-4 border-t border-navy-700">
+      <h4 className="text-xs font-semibold text-slate-400 flex items-center gap-1.5 mb-3">
+        <MessageSquare className="h-3.5 w-3.5" /> Discussão deste cenário
+      </h4>
+      <div className="space-y-2 max-h-52 overflow-y-auto pr-1 mb-3">
+        {isLoading && <div className="flex justify-center py-3"><Loader2 className="h-4 w-4 animate-spin text-pitch-400" /></div>}
+        {!isLoading && comments.length === 0 && (
+          <p className="text-xs text-slate-500 text-center py-3">Nenhum comentário ainda.</p>
+        )}
+        {comments.map((c: any) => {
+          const isMe = c.user_id === user?.id
+          return (
+            <div key={c.id} className={`flex gap-2 ${isMe ? 'flex-row-reverse' : ''}`}>
+              <div className="h-6 w-6 rounded-full bg-navy-700 flex items-center justify-center text-[10px] font-bold text-slate-300 flex-shrink-0">
+                {c.player?.name?.charAt(0) ?? '?'}
+              </div>
+              <div className={`max-w-[80%] flex flex-col gap-0.5 ${isMe ? 'items-end' : 'items-start'}`}>
+                <span className="text-[9px] text-slate-500 px-1">{c.player?.name ?? 'Usuário'}</span>
+                <div className={`px-2.5 py-1.5 rounded-xl text-xs ${isMe ? 'bg-pitch-600 text-white rounded-tr-sm' : 'bg-navy-800 text-slate-200 rounded-tl-sm'}`}>
+                  {c.content}
+                </div>
+                <span className="text-[8px] text-slate-600 px-1">
+                  {new Date(c.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              </div>
+            </div>
+          )
+        })}
+        <div ref={bottomRef} />
+      </div>
+      <form onSubmit={handleSend} className="flex gap-2">
+        <Input value={text} onChange={e => setText(e.target.value)} placeholder="Comente sobre este cenário..." className="flex-1 h-8 text-xs" disabled={sending} />
+        <Button type="submit" size="icon" className="h-8 w-8" disabled={!text.trim() || sending}>
+          {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+        </Button>
+      </form>
+    </div>
+  )
+}
+
 function ScenariosTab({
   matchId, teamId, myRoster, opponentRoster,
-  myTeamData, opponentTeamData,
+  myTeamData, opponentTeamData, myPlayer,
 }: {
   matchId: string
   teamId: string
@@ -192,6 +293,7 @@ function ScenariosTab({
   opponentRoster: any[]
   myTeamData: any
   opponentTeamData: any
+  myPlayer: any
 }) {
   const { data: scenarios = [], isLoading, isError: scenariosError, error: scenariosQueryError } = useScenarios(matchId, teamId)
   const queryClient = useQueryClient()
@@ -211,6 +313,7 @@ function ScenariosTab({
   const [homePlayers, setHomePlayers] = useState<any[]>([])
   const [awayPlayers, setAwayPlayers] = useState<any[]>([])
   const [drawings, setDrawings] = useState<any[]>([])
+  const [showOpponent, setShowOpponent] = useState(true)
 
   const [homeColor, awayColor] = resolveTeamColors(myTeamData?.primary_color, opponentTeamData?.primary_color)
 
@@ -322,9 +425,16 @@ function ScenariosTab({
       {/* Scenario list */}
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-slate-300">Cenários salvos ({scenarios.length})</h3>
-        <Button size="sm" onClick={openNew} className="gap-1">
-          <Plus className="h-3.5 w-3.5" /> Novo cenário
-        </Button>
+        {activeScenarioId === 'new' ? (
+          <Button size="sm" onClick={handleSave} disabled={saving} className="gap-1">
+            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+            {saving ? 'Salvando...' : 'Salvar cenário'}
+          </Button>
+        ) : (
+          <Button size="sm" onClick={openNew} className="gap-1">
+            <Plus className="h-3.5 w-3.5" /> Novo cenário
+          </Button>
+        )}
       </div>
 
       {isLoading && <div className="flex justify-center py-4"><Loader2 className="h-5 w-5 animate-spin text-pitch-400" /></div>}
@@ -338,36 +448,45 @@ function ScenariosTab({
 
       {scenarios.length > 0 && (
         <div className="flex gap-2 flex-wrap">
-          {scenarios.map((s: any) => (
+          {scenarios.map((s: any) => {
+            const savedAt = new Date(s.updated_at ?? s.created_at)
+            const today = new Date()
+            const isToday = savedAt.toDateString() === today.toDateString()
+            const savedLabel = `${s.creator_name ?? 'Alguém'} · ${isToday ? '' : savedAt.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) + ' '}${savedAt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
+            return (
             <div
               key={s.id}
-              className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm cursor-pointer transition-colors ${activeScenarioId === s.id ? 'bg-pitch-600/20 border-pitch-500 text-pitch-400' : 'bg-navy-800 border-navy-700 text-slate-300 hover:bg-navy-700'}`}
+              className={`flex flex-col gap-0.5 px-3 py-2 rounded-lg border text-sm cursor-pointer transition-colors ${activeScenarioId === s.id ? 'bg-pitch-600/20 border-pitch-500 text-pitch-400' : 'bg-navy-800 border-navy-700 text-slate-300 hover:bg-navy-700'}`}
               onClick={() => loadScenario(s)}
             >
-              {editingTitleId === s.id ? (
-                <input
-                  autoFocus
-                  defaultValue={s.title}
-                  className="bg-transparent border-b border-pitch-500 text-white text-sm outline-none w-28"
-                  onBlur={async e => {
-                    await supabase.from('pregame_scenarios').update({ title: e.target.value }).eq('id', s.id)
-                    queryClient.invalidateQueries({ queryKey: ['pregame_scenarios', matchId, teamId] })
-                    setEditingTitleId(null)
-                  }}
-                  onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
-                  onClick={e => e.stopPropagation()}
-                />
-              ) : (
-                <span>{s.title}</span>
-              )}
-              <button className="text-slate-500 hover:text-slate-300 transition-colors" onClick={e => { e.stopPropagation(); setEditingTitleId(s.id) }} title="Renomear">
-                <Edit2 className="h-3 w-3" />
-              </button>
-              <button className="text-red-400/50 hover:text-red-400 transition-colors" onClick={e => { e.stopPropagation(); handleDelete(s.id) }} disabled={deleting === s.id}>
-                {deleting === s.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
-              </button>
+              <div className="flex items-center gap-2">
+                {editingTitleId === s.id ? (
+                  <input
+                    autoFocus
+                    defaultValue={s.title}
+                    className="bg-transparent border-b border-pitch-500 text-white text-sm outline-none w-28"
+                    onBlur={async e => {
+                      await supabase.from('pregame_scenarios').update({ title: e.target.value }).eq('id', s.id)
+                      queryClient.invalidateQueries({ queryKey: ['pregame_scenarios', matchId, teamId] })
+                      setEditingTitleId(null)
+                    }}
+                    onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+                    onClick={e => e.stopPropagation()}
+                  />
+                ) : (
+                  <span>{s.title}</span>
+                )}
+                <button className="text-slate-500 hover:text-slate-300 transition-colors" onClick={e => { e.stopPropagation(); setEditingTitleId(s.id) }} title="Renomear">
+                  <Edit2 className="h-3 w-3" />
+                </button>
+                <button className="text-red-400/50 hover:text-red-400 transition-colors" onClick={e => { e.stopPropagation(); handleDelete(s.id) }} disabled={deleting === s.id}>
+                  {deleting === s.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+                </button>
+              </div>
+              <span className="text-[9px] text-slate-500">{savedLabel}</span>
             </div>
-          ))}
+          )})}
+
         </div>
       )}
 
@@ -407,13 +526,19 @@ function ScenariosTab({
               {opponentRoster.length > 0 && (
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <span className="text-xs text-red-400 font-semibold">{opponentTeamData?.name}:</span>
-                  {(Object.keys(FORMATIONS) as FormationName[]).map(f => (
+                  {showOpponent && (Object.keys(FORMATIONS) as FormationName[]).map(f => (
                     <button key={f} onClick={() => {
                       setAwayFormation(f)
                       const rp = opponentRoster.slice(0, 7).map(pt => ({ id: `away-${pt.id}`, name: pt.player?.name ?? '?', jerseyNumber: pt.jersey_number, playerId: pt.player_id }))
                       setAwayPlayers(getDefaultFormation(rp, 'away', orientation, f))
                     }} className={`px-2 py-1 rounded text-xs font-bold transition-all ${awayFormation === f ? 'bg-red-600 text-white' : 'bg-navy-800 text-slate-400 hover:bg-navy-700'}`}>{f}</button>
                   ))}
+                  <button
+                    onClick={() => setShowOpponent(prev => !prev)}
+                    className={`px-2 py-1 rounded text-xs font-bold transition-all border ${showOpponent ? 'border-red-400/50 text-red-400 hover:bg-red-400/10' : 'border-slate-600 text-slate-500 hover:bg-navy-700'}`}
+                  >
+                    {showOpponent ? 'Ocultar' : 'Mostrar adversário'}
+                  </button>
                 </div>
               )}
             </div>
@@ -446,7 +571,7 @@ function ScenariosTab({
               }}
               onDrawingsChange={setDrawings}
               initialDrawings={drawings}
-              showAway={opponentRoster.length > 0}
+              showAway={opponentRoster.length > 0 && showOpponent}
               orientation={orientation}
               onOrientationChange={handleOrientationChange}
             />
@@ -468,6 +593,15 @@ function ScenariosTab({
                 {saving ? 'Salvando...' : 'Salvar cenário'}
               </Button>
             </div>
+
+            {activeScenarioId && activeScenarioId !== 'new' && (
+              <ScenarioDiscussion
+                matchId={matchId}
+                teamId={teamId}
+                scenarioId={activeScenarioId}
+                myPlayer={myPlayer}
+              />
+            )}
           </CardContent>
         </Card>
       )}
@@ -491,7 +625,6 @@ export default function PreGameRoom() {
   const { data: myPlayer } = useMyPlayer(user?.id)
   const { data: myTeamLinks } = useMyTeams(myPlayer?.id)
   const { data: match, isLoading: matchLoading } = useMatch(matchId)
-  const [activeTab, setActiveTab] = useState<'discussion' | 'scenarios'>('discussion')
 
   // Find which team the user belongs to in this match
   const activeLinks = myTeamLinks?.filter((l: any) => l.team?.championship?.id === championship?.id) ?? []
@@ -603,45 +736,35 @@ export default function PreGameRoom() {
         </CardContent>
       </Card>
 
-      {/* Tabs */}
       {teamId && (
         <>
-          <div className="flex gap-1 bg-navy-800 rounded-lg p-1 w-fit">
-            <button
-              onClick={() => setActiveTab('discussion')}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'discussion' ? 'bg-pitch-600 text-white' : 'text-slate-400 hover:text-white'}`}
-            >
-              <MessageSquare className="h-4 w-4" />
-              Discussão
-            </button>
-            <button
-              onClick={() => setActiveTab('scenarios')}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'scenarios' ? 'bg-pitch-600 text-white' : 'text-slate-400 hover:text-white'}`}
-            >
-              <MapPin className="h-4 w-4" />
-              Cenários Táticos
-            </button>
-          </div>
+          <Card>
+            <CardContent className="p-5">
+              <h2 className="text-sm font-semibold text-slate-300 flex items-center gap-2 mb-4">
+                <MapPin className="h-4 w-4 text-pitch-400" /> Cenários Táticos
+              </h2>
+              <ScenariosTab
+                matchId={matchId!}
+                teamId={teamId}
+                myRoster={myRoster as any[]}
+                opponentRoster={opponentRoster as any[]}
+                myTeamData={myTeamData}
+                opponentTeamData={opponentTeamData}
+                myPlayer={myPlayer}
+              />
+            </CardContent>
+          </Card>
 
           <Card>
             <CardContent className="p-5">
-              {activeTab === 'discussion' && (
-                <DiscussionTab
-                  matchId={matchId!}
-                  teamId={teamId}
-                  myPlayer={myPlayer}
-                />
-              )}
-              {activeTab === 'scenarios' && (
-                <ScenariosTab
-                  matchId={matchId!}
-                  teamId={teamId}
-                  myRoster={myRoster as any[]}
-                  opponentRoster={opponentRoster as any[]}
-                  myTeamData={myTeamData}
-                  opponentTeamData={opponentTeamData}
-                />
-              )}
+              <h2 className="text-sm font-semibold text-slate-300 flex items-center gap-2 mb-4">
+                <MessageSquare className="h-4 w-4 text-pitch-400" /> Discussão Geral
+              </h2>
+              <DiscussionTab
+                matchId={matchId!}
+                teamId={teamId}
+                myPlayer={myPlayer}
+              />
             </CardContent>
           </Card>
         </>
