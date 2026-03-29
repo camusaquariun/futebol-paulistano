@@ -305,7 +305,7 @@ export default function MatchLive() {
               {/* Home team */}
               <div className="flex flex-col items-center gap-3">
                 <TeamBadge name={match.home_team?.name} shieldUrl={match.home_team?.shield_url} size="xl" />
-                <span className="font-bold text-white text-sm sm:text-base">
+                <span className="font-extrabold text-white text-base sm:text-xl text-center">
                   {match.home_team?.name}
                 </span>
               </div>
@@ -315,7 +315,7 @@ export default function MatchLive() {
               {/* Away team */}
               <div className="flex flex-col items-center gap-3">
                 <TeamBadge name={match.away_team?.name} shieldUrl={match.away_team?.shield_url} size="xl" />
-                <span className="font-bold text-white text-sm sm:text-base">
+                <span className="font-extrabold text-white text-base sm:text-xl text-center">
                   {match.away_team?.name}
                 </span>
               </div>
@@ -385,7 +385,7 @@ export default function MatchLive() {
                   {/* Home */}
                   <div className="flex-1 text-center">
                     <TeamBadge name={match.home_team?.name} shieldUrl={match.home_team?.shield_url} size="lg" className="mx-auto mb-2" />
-                    <p className="font-bold text-white text-sm sm:text-base">
+                    <p className="font-extrabold text-white text-base sm:text-xl mt-1">
                       {match.home_team?.name}
                     </p>
                     {/* Card icons */}
@@ -452,7 +452,7 @@ export default function MatchLive() {
                   {/* Away */}
                   <div className="flex-1 text-center">
                     <TeamBadge name={match.away_team?.name} shieldUrl={match.away_team?.shield_url} size="lg" className="mx-auto mb-2" />
-                    <p className="font-bold text-white text-sm sm:text-base">
+                    <p className="font-extrabold text-white text-base sm:text-xl mt-1">
                       {match.away_team?.name}
                     </p>
                     {/* Card icons */}
