@@ -1,12 +1,15 @@
 import { Link } from 'react-router-dom'
-import { useActiveChampionship, useChampionshipCategories, useCategories } from '@/hooks/useSupabase'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Trophy, BarChart3, Calendar, Target, ShieldAlert, Users } from 'lucide-react'
+import { useActiveChampionship, useChampionshipCategories, useCategories, useMatches } from '@/hooks/useSupabase'
+import { Card, CardContent } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Trophy, BarChart3, Calendar, Target, ShieldAlert, Clock, ChevronRight } from 'lucide-react'
+import { TeamBadge } from '@/components/TeamBadge'
 
 export default function Home() {
   const { data: championship, isLoading } = useActiveChampionship()
   const { data: champCategories } = useChampionshipCategories(championship?.id)
   const { data: categories } = useCategories()
+  const { data: allMatches } = useMatches(championship?.id)
 
   if (isLoading) {
     return (
@@ -32,8 +35,18 @@ export default function Home() {
     Veterano: '🏆',
   }
 
+  const upcomingMatches = allMatches
+    ?.filter(m => m.status === 'scheduled' && m.match_date)
+    .sort((a, b) => new Date(a.match_date!).getTime() - new Date(b.match_date!).getTime())
+    .slice(0, 4) ?? []
+
+  const recentMatches = allMatches
+    ?.filter(m => m.status === 'finished')
+    .sort((a, b) => new Date(b.match_date ?? 0).getTime() - new Date(a.match_date ?? 0).getTime())
+    .slice(0, 4) ?? []
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-10">
       {/* Hero */}
       <div className="text-center py-12 sm:py-16">
         <div className="inline-flex items-center gap-3 bg-pitch-600/10 border border-pitch-600/30 rounded-full px-6 py-2 mb-6">
@@ -76,6 +89,105 @@ export default function Home() {
               </Card>
             </Link>
           ))}
+        </div>
+      )}
+
+      {/* Upcoming Matches */}
+      {upcomingMatches.length > 0 && (
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Clock className="h-5 w-5 text-purple-400" />
+              <h2 className="text-lg font-bold text-white">Próximos Jogos</h2>
+            </div>
+            <Link to="/jogos" className="text-xs text-slate-400 hover:text-white flex items-center gap-1 transition-colors">
+              Ver todos <ChevronRight className="h-3 w-3" />
+            </Link>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {upcomingMatches.map(match => (
+              <Link key={match.id} to={`/partidas/${match.id}/ao-vivo`}>
+                <Card className="card-hover bg-[#0f1a2e] border-slate-700/50 hover:border-purple-500/50 transition-all">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                        {match.category?.name}
+                      </Badge>
+                      {match.match_date && (
+                        <span className="text-[10px] text-slate-500 flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          {new Date(match.match_date).toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' })}
+                          {' '}
+                          {new Date(match.match_date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <TeamBadge name={match.home_team?.name} shieldUrl={match.home_team?.shield_url} size="sm" />
+                        <span className="text-sm font-semibold text-white truncate">{match.home_team?.name}</span>
+                      </div>
+                      <span className="text-xs font-bold text-slate-500 flex-shrink-0">VS</span>
+                      <div className="flex items-center gap-2 flex-1 min-w-0 justify-end">
+                        <span className="text-sm font-semibold text-white truncate">{match.away_team?.name}</span>
+                        <TeamBadge name={match.away_team?.name} shieldUrl={match.away_team?.shield_url} size="sm" />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Recent Results */}
+      {recentMatches.length > 0 && (
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Trophy className="h-5 w-5 text-gold-400" />
+              <h2 className="text-lg font-bold text-white">Últimos Resultados</h2>
+            </div>
+            <Link to="/jogos" className="text-xs text-slate-400 hover:text-white flex items-center gap-1 transition-colors">
+              Ver todos <ChevronRight className="h-3 w-3" />
+            </Link>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {recentMatches.map(match => (
+              <Link key={match.id} to={`/partidas/${match.id}/ao-vivo`}>
+                <Card className="card-hover bg-[#0f1a2e] border-slate-700/50 hover:border-pitch-500/50 transition-all">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <Badge variant="default" className="text-[10px] px-1.5 py-0">
+                        {match.category?.name}
+                      </Badge>
+                      {match.match_date && (
+                        <span className="text-[10px] text-slate-500">
+                          {new Date(match.match_date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <TeamBadge name={match.home_team?.name} shieldUrl={match.home_team?.shield_url} size="sm" />
+                        <span className="text-sm font-semibold text-white truncate">{match.home_team?.name}</span>
+                      </div>
+                      <div className="flex-shrink-0 text-center px-2">
+                        <span className="text-lg font-extrabold text-gold-400">
+                          {match.home_score} <span className="text-slate-500 text-base">×</span> {match.away_score}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 flex-1 min-w-0 justify-end">
+                        <span className="text-sm font-semibold text-white truncate">{match.away_team?.name}</span>
+                        <TeamBadge name={match.away_team?.name} shieldUrl={match.away_team?.shield_url} size="sm" />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            ))}
+          </div>
         </div>
       )}
 
