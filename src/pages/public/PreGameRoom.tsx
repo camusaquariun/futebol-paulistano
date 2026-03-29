@@ -51,6 +51,7 @@ function useComments(matchId: string | undefined, teamId: string | undefined) {
     },
     enabled: !!matchId && !!teamId,
     refetchInterval: 8000,
+    retry: 1,
   })
 }
 
@@ -78,16 +79,18 @@ function useScenarios(matchId: string | undefined, teamId: string | undefined) {
     },
     enabled: !!matchId && !!teamId,
     refetchInterval: 15000,
+    retry: 1,
   })
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function DiscussionTab({ matchId, teamId, myPlayer }: { matchId: string; teamId: string; myPlayer: any }) {
-  const { data: comments = [], isLoading } = useComments(matchId, teamId)
+  const { data: comments = [], isLoading, isError, error: queryError } = useComments(matchId, teamId)
   const queryClient = useQueryClient()
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
+  const [sendError, setSendError] = useState<string | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const { user } = useAuth()
 
@@ -99,15 +102,22 @@ function DiscussionTab({ matchId, teamId, myPlayer }: { matchId: string; teamId:
     e.preventDefault()
     if (!text.trim() || !user) return
     setSending(true)
-    await supabase.from('pregame_comments').insert({
+    setSendError(null)
+    const { error } = await supabase.from('pregame_comments').insert({
       match_id: matchId,
       team_id: teamId,
       player_id: myPlayer?.id ?? null,
       user_id: user.id,
       content: text.trim(),
     })
-    setText('')
-    queryClient.invalidateQueries({ queryKey: ['pregame_comments', matchId, teamId] })
+    if (error) {
+      setSendError(error.message.includes('relation') || error.message.includes('does not exist')
+        ? 'Tabela não encontrada. Execute o SQL de configuração no Supabase.'
+        : `Erro ao enviar: ${error.message}`)
+    } else {
+      setText('')
+      queryClient.invalidateQueries({ queryKey: ['pregame_comments', matchId, teamId] })
+    }
     setSending(false)
   }
 
@@ -119,7 +129,14 @@ function DiscussionTab({ matchId, teamId, myPlayer }: { matchId: string; teamId:
             <Loader2 className="h-5 w-5 animate-spin text-pitch-400" />
           </div>
         )}
-        {!isLoading && comments.length === 0 && (
+        {isError && (
+          <div className="text-center py-6 text-red-400 text-sm bg-red-400/10 rounded-lg px-4">
+            {(queryError as any)?.message?.includes('relation') || (queryError as any)?.message?.includes('does not exist')
+              ? '⚠️ Tabela não encontrada. Execute o SQL de configuração no Supabase antes de usar esta função.'
+              : `Erro: ${(queryError as any)?.message}`}
+          </div>
+        )}
+        {!isLoading && !isError && comments.length === 0 && (
           <div className="text-center py-10 text-slate-500 text-sm">
             Nenhum comentário ainda. Seja o primeiro a falar!
           </div>
@@ -146,6 +163,9 @@ function DiscussionTab({ matchId, teamId, myPlayer }: { matchId: string; teamId:
         <div ref={bottomRef} />
       </div>
 
+      {sendError && (
+        <div className="text-red-400 text-xs bg-red-400/10 rounded-lg px-3 py-2 mt-2">{sendError}</div>
+      )}
       <form onSubmit={handleSend} className="flex gap-2 mt-3 pt-3 border-t border-navy-700">
         <Input
           value={text}
@@ -173,13 +193,15 @@ function ScenariosTab({
   myTeamData: any
   opponentTeamData: any
 }) {
-  const { data: scenarios = [], isLoading } = useScenarios(matchId, teamId)
+  const { data: scenarios = [], isLoading, isError: scenariosError, error: scenariosQueryError } = useScenarios(matchId, teamId)
   const queryClient = useQueryClient()
   const { user } = useAuth()
   const [activeScenarioId, setActiveScenarioId] = useState<string | 'new' | null>(null)
   const [editTitle, setEditTitle] = useState('')
   const [editDesc, setEditDesc] = useState('')
   const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [saveSuccess, setSaveSuccess] = useState(false)
   const [deleting, setDeleting] = useState<string | null>(null)
   const [editingTitleId, setEditingTitleId] = useState<string | null>(null)
 
@@ -234,6 +256,8 @@ function ScenariosTab({
   const handleSave = async () => {
     if (!user) return
     setSaving(true)
+    setSaveError(null)
+    setSaveSuccess(false)
     try {
       let sid = activeScenarioId === 'new' ? null : activeScenarioId
 
@@ -246,22 +270,33 @@ function ScenariosTab({
         sid = data.id
         setActiveScenarioId(sid)
       } else {
-        await supabase.from('pregame_scenarios')
+        const { error } = await supabase.from('pregame_scenarios')
           .update({ title: editTitle, description: editDesc, drawings, updated_at: new Date().toISOString() })
           .eq('id', sid)
+        if (error) throw error
       }
 
       // Save players
-      await supabase.from('pregame_scenario_players').delete().eq('scenario_id', sid!)
+      const { error: delErr } = await supabase.from('pregame_scenario_players').delete().eq('scenario_id', sid!)
+      if (delErr) throw delErr
+
       const allPlayers = [
         ...homePlayers.map(p => ({ scenario_id: sid!, player_id: p.playerId ?? null, label: p.label, jersey_number: p.jerseyNumber, position_x: p.x, position_y: p.y, team_side: 'home' })),
         ...awayPlayers.map(p => ({ scenario_id: sid!, player_id: p.playerId ?? null, label: p.label, jersey_number: p.jerseyNumber, position_x: p.x, position_y: p.y, team_side: 'away' })),
       ]
       if (allPlayers.length > 0) {
-        await supabase.from('pregame_scenario_players').insert(allPlayers)
+        const { error: insErr } = await supabase.from('pregame_scenario_players').insert(allPlayers)
+        if (insErr) throw insErr
       }
 
       queryClient.invalidateQueries({ queryKey: ['pregame_scenarios', matchId, teamId] })
+      setSaveSuccess(true)
+      setTimeout(() => setSaveSuccess(false), 2000)
+    } catch (err: any) {
+      const msg = err?.message ?? 'Erro desconhecido'
+      setSaveError(msg.includes('relation') || msg.includes('does not exist')
+        ? '⚠️ Tabela não encontrada. Execute o SQL de configuração no Supabase.'
+        : `Erro ao salvar: ${msg}`)
     } finally {
       setSaving(false)
     }
@@ -293,6 +328,13 @@ function ScenariosTab({
       </div>
 
       {isLoading && <div className="flex justify-center py-4"><Loader2 className="h-5 w-5 animate-spin text-pitch-400" /></div>}
+      {scenariosError && (
+        <div className="text-red-400 text-sm bg-red-400/10 rounded-lg px-4 py-3">
+          {(scenariosQueryError as any)?.message?.includes('relation') || (scenariosQueryError as any)?.message?.includes('does not exist')
+            ? '⚠️ Tabela não encontrada. Execute o SQL de configuração no Supabase antes de usar esta função.'
+            : `Erro: ${(scenariosQueryError as any)?.message}`}
+        </div>
+      )}
 
       {scenarios.length > 0 && (
         <div className="flex gap-2 flex-wrap">
@@ -409,6 +451,14 @@ function ScenariosTab({
               onOrientationChange={handleOrientationChange}
             />
 
+            {saveError && (
+              <div className="text-red-400 text-xs bg-red-400/10 rounded-lg px-3 py-2">{saveError}</div>
+            )}
+            {saveSuccess && (
+              <div className="text-pitch-400 text-xs bg-pitch-400/10 rounded-lg px-3 py-2 flex items-center gap-1">
+                <Check className="h-3.5 w-3.5" /> Cenário salvo com sucesso!
+              </div>
+            )}
             <div className="flex justify-end gap-2">
               <Button variant="ghost" size="sm" className="text-slate-400" onClick={() => setActiveScenarioId(null)}>
                 <X className="h-3.5 w-3.5 mr-1" /> Fechar
