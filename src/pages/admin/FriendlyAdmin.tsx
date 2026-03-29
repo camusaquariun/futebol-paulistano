@@ -2,12 +2,13 @@ import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
+import { useActiveChampionship, useChampionshipCategories, useTeamsByCategory } from '@/hooks/useSupabase'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import { Swords, Lock, Trash2, Plus } from 'lucide-react'
+import { Swords, Lock, Trash2, Plus, Calendar, Trophy } from 'lucide-react'
 
 const VALID_DAYS = [1, 2, 4]
 const DAY_NAMES: Record<number, string> = { 1: 'Segunda', 2: 'Terça', 4: 'Quinta' }
@@ -26,6 +27,78 @@ function isValidDay(date: string): boolean {
 export default function FriendlyAdmin() {
   const { user } = useAuth()
   const queryClient = useQueryClient()
+  const { data: championship } = useActiveChampionship()
+  const { data: categories } = useChampionshipCategories(championship?.id)
+
+  // ── Criar Amistoso ──────────────────────────────────────────────
+  const [matchCatId, setMatchCatId] = useState('')
+  const [homeTeamId, setHomeTeamId] = useState('')
+  const [awayTeamId, setAwayTeamId] = useState('')
+  const [matchDate, setMatchDate] = useState('')
+  const [matchTime, setMatchTime] = useState('')
+  const [matchLocation, setMatchLocation] = useState('')
+  const [savingMatch, setSavingMatch] = useState(false)
+  const [matchSuccess, setMatchSuccess] = useState(false)
+  const { data: matchCatTeams = [] } = useTeamsByCategory(championship?.id, matchCatId || undefined)
+
+  const handleCreateMatch = async () => {
+    if (!championship || !matchCatId || !homeTeamId || !awayTeamId || !matchDate) return
+    if (homeTeamId === awayTeamId) { alert('Selecione times diferentes.'); return }
+    setSavingMatch(true)
+    const dateTime = matchTime ? `${matchDate}T${matchTime}:00` : `${matchDate}T10:00:00`
+    const { error } = await supabase.from('matches').insert({
+      championship_id: championship.id,
+      category_id: matchCatId,
+      phase: 'amistoso',
+      home_team_id: homeTeamId,
+      away_team_id: awayTeamId,
+      match_date: dateTime,
+      location: matchLocation || null,
+      status: 'scheduled',
+    })
+    if (error) { alert('Erro: ' + error.message) }
+    else {
+      setMatchSuccess(true)
+      setHomeTeamId(''); setAwayTeamId(''); setMatchDate(''); setMatchTime(''); setMatchLocation('')
+      setTimeout(() => setMatchSuccess(false), 3000)
+    }
+    setSavingMatch(false)
+  }
+
+  // ── Lançar Desafio ──────────────────────────────────────────────
+  const [chalCatId, setChalCatId] = useState('')
+  const [challengerTeamId, setChallengerTeamId] = useState('')
+  const [opponentTeamId, setOpponentTeamId] = useState('')
+  const [chalDate, setChalDate] = useState('')
+  const [chalTime, setChalTime] = useState('')
+  const [chalLocation, setChalLocation] = useState('')
+  const [savingChal, setSavingChal] = useState(false)
+  const [chalSuccess, setChalSuccess] = useState(false)
+  const { data: chalCatTeams = [] } = useTeamsByCategory(championship?.id, chalCatId || undefined)
+
+  const handleCreateChallenge = async () => {
+    if (!championship || !chalCatId || !challengerTeamId || !chalDate || !chalTime) return
+    setSavingChal(true)
+    const { error } = await supabase.from('friendly_challenges').insert({
+      championship_id: championship.id,
+      category_id: chalCatId,
+      challenger_team_id: challengerTeamId,
+      challenger_user_id: user!.id,
+      opponent_team_id: opponentTeamId || null,
+      match_date: chalDate,
+      match_time: chalTime,
+      location: chalLocation || null,
+      status: 'pending',
+    })
+    if (error) { alert('Erro: ' + error.message) }
+    else {
+      setChalSuccess(true)
+      setChallengerTeamId(''); setOpponentTeamId(''); setChalDate(''); setChalTime(''); setChalLocation('')
+      queryClient.invalidateQueries({ queryKey: ['friendly_challenges_admin'] })
+      setTimeout(() => setChalSuccess(false), 3000)
+    }
+    setSavingChal(false)
+  }
 
   const { data: blockedDates } = useQuery({
     queryKey: ['friendly_blocked_dates'],
@@ -132,6 +205,112 @@ export default function FriendlyAdmin() {
           <p className="text-sm text-slate-400">Gerencie datas bloqueadas e desafios</p>
         </div>
       </div>
+
+      {/* ── Criar Amistoso ── */}
+      <Card className="border-pitch-500/20">
+        <CardContent className="p-5 space-y-4">
+          <h3 className="font-bold text-white flex items-center gap-2">
+            <Trophy className="h-4 w-4 text-pitch-400" /> Criar Amistoso
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Categoria</Label>
+              <select value={matchCatId} onChange={e => { setMatchCatId(e.target.value); setHomeTeamId(''); setAwayTeamId('') }}
+                className="w-full bg-navy-800 border border-navy-600 rounded-lg px-3 py-2 text-white text-sm focus:border-pitch-500 focus:outline-none">
+                <option value="">Selecione...</option>
+                {categories?.map((c: any) => <option key={c.category_id} value={c.category_id}>{c.category?.name}</option>)}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Time da Casa</Label>
+              <select value={homeTeamId} onChange={e => setHomeTeamId(e.target.value)} disabled={!matchCatId}
+                className="w-full bg-navy-800 border border-navy-600 rounded-lg px-3 py-2 text-white text-sm focus:border-pitch-500 focus:outline-none disabled:opacity-50">
+                <option value="">Selecione...</option>
+                {matchCatTeams.map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Time Visitante</Label>
+              <select value={awayTeamId} onChange={e => setAwayTeamId(e.target.value)} disabled={!matchCatId}
+                className="w-full bg-navy-800 border border-navy-600 rounded-lg px-3 py-2 text-white text-sm focus:border-pitch-500 focus:outline-none disabled:opacity-50">
+                <option value="">Selecione...</option>
+                {matchCatTeams.filter((t: any) => t.id !== homeTeamId).map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Data</Label>
+              <Input type="date" value={matchDate} onChange={e => setMatchDate(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Horário</Label>
+              <Input type="time" value={matchTime} onChange={e => setMatchTime(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Local (opcional)</Label>
+              <Input value={matchLocation} onChange={e => setMatchLocation(e.target.value)} placeholder="Ex: Campo do Clube" />
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <Button onClick={handleCreateMatch} disabled={savingMatch || !matchCatId || !homeTeamId || !awayTeamId || !matchDate} className="bg-pitch-600 hover:bg-pitch-700">
+              <Plus className="h-4 w-4 mr-1" />{savingMatch ? 'Criando...' : 'Criar Amistoso'}
+            </Button>
+            {matchSuccess && <span className="text-pitch-400 text-sm font-medium">✓ Amistoso criado com sucesso!</span>}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ── Lançar Desafio ── */}
+      <Card className="border-gold-500/20">
+        <CardContent className="p-5 space-y-4">
+          <h3 className="font-bold text-white flex items-center gap-2">
+            <Swords className="h-4 w-4 text-gold-400" /> Lançar Desafio de Amistoso
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Categoria</Label>
+              <select value={chalCatId} onChange={e => { setChalCatId(e.target.value); setChallengerTeamId(''); setOpponentTeamId('') }}
+                className="w-full bg-navy-800 border border-navy-600 rounded-lg px-3 py-2 text-white text-sm focus:border-pitch-500 focus:outline-none">
+                <option value="">Selecione...</option>
+                {categories?.map((c: any) => <option key={c.category_id} value={c.category_id}>{c.category?.name}</option>)}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Time Desafiante</Label>
+              <select value={challengerTeamId} onChange={e => setChallengerTeamId(e.target.value)} disabled={!chalCatId}
+                className="w-full bg-navy-800 border border-navy-600 rounded-lg px-3 py-2 text-white text-sm focus:border-pitch-500 focus:outline-none disabled:opacity-50">
+                <option value="">Selecione...</option>
+                {chalCatTeams.map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Adversário (opcional — deixe vazio para aberto)</Label>
+              <select value={opponentTeamId} onChange={e => setOpponentTeamId(e.target.value)} disabled={!chalCatId}
+                className="w-full bg-navy-800 border border-navy-600 rounded-lg px-3 py-2 text-white text-sm focus:border-pitch-500 focus:outline-none disabled:opacity-50">
+                <option value="">Aberto (qualquer time)</option>
+                {chalCatTeams.filter((t: any) => t.id !== challengerTeamId).map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Data</Label>
+              <Input type="date" value={chalDate} onChange={e => setChalDate(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Horário</Label>
+              <Input type="time" value={chalTime} onChange={e => setChalTime(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Local (opcional)</Label>
+              <Input value={chalLocation} onChange={e => setChalLocation(e.target.value)} placeholder="Ex: Campo do Clube" />
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <Button onClick={handleCreateChallenge} disabled={savingChal || !chalCatId || !challengerTeamId || !chalDate || !chalTime} className="bg-gold-600 hover:bg-gold-700 text-black font-semibold">
+              <Swords className="h-4 w-4 mr-1" />{savingChal ? 'Lançando...' : 'Lançar Desafio'}
+            </Button>
+            {chalSuccess && <span className="text-gold-400 text-sm font-medium">✓ Desafio lançado!</span>}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Block date form */}
       <Card className="border-red-500/20">

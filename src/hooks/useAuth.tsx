@@ -27,33 +27,45 @@ async function fetchAdminStatus(userId: string): Promise<boolean> {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
-  const [isAdmin, setIsAdmin] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(() => localStorage.getItem('fp_is_admin') === '1')
   const [loading, setLoading] = useState(true)
 
-  // On mount: check existing session
   useEffect(() => {
     let cancelled = false
 
+    // Restore session on mount
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (cancelled) return
       if (session?.user) {
         setUser(session.user)
         const admin = await fetchAdminStatus(session.user.id)
-        if (!cancelled) setIsAdmin(admin)
+        if (!cancelled) {
+          setIsAdmin(admin)
+          localStorage.setItem('fp_is_admin', admin ? '1' : '0')
+        }
       }
       if (!cancelled) setLoading(false)
     })
 
-    // Listen for auth changes (token refresh, sign out from other tab)
+    // Listen for ALL auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (cancelled) return
       if (event === 'SIGNED_OUT') {
         setUser(null)
         setIsAdmin(false)
-      } else if (event === 'TOKEN_REFRESHED' && session?.user) {
+        localStorage.removeItem('fp_is_admin')
+      } else if (session?.user) {
+        // Handles SIGNED_IN, TOKEN_REFRESHED, INITIAL_SESSION
         setUser(session.user)
+        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+          const admin = await fetchAdminStatus(session.user.id)
+          if (!cancelled) {
+            setIsAdmin(admin)
+            localStorage.setItem('fp_is_admin', admin ? '1' : '0')
+          }
+        }
       }
-      // SIGNED_IN is handled by signIn() directly — don't duplicate here
+      if (!cancelled) setLoading(false)
     })
 
     return () => {
@@ -69,6 +81,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(data.user)
     const admin = await fetchAdminStatus(data.user.id)
     setIsAdmin(admin)
+    localStorage.setItem('fp_is_admin', admin ? '1' : '0')
     setLoading(false)
 
     return { error: null, isAdmin: admin }
@@ -78,6 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut()
     setUser(null)
     setIsAdmin(false)
+    localStorage.removeItem('fp_is_admin')
   }
 
   return (

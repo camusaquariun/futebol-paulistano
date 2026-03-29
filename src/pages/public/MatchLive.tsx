@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { usePoolMatchBetsByMatch } from '@/hooks/useSupabase'
 import { formatDate, phaseLabel } from '@/lib/utils'
-import { calculateMatchPoints } from '@/lib/pool-points'
+import { calculateMatchPoints, POINT_TIER_LABELS } from '@/lib/pool-points'
 import type { MatchEvent } from '@/types/database'
 import { ArrowLeft, Star, MapPin, Calendar, Clock, Send, Trophy, MessageCircle, Target, Users } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -297,25 +297,25 @@ export default function MatchLive() {
         </div>
       )}
 
-      <main className="max-w-2xl mx-auto px-4 py-6 space-y-6">
+      <main className="max-w-2xl mx-auto px-2.5 sm:px-4 py-4 sm:py-6 space-y-4 sm:space-y-6">
         {isPreMatch ? (
           /* ==================== PRE-MATCH ==================== */
-          <div className="text-center space-y-8 py-8">
-            <div className="flex items-center justify-center gap-6 sm:gap-10">
+          <div className="text-center space-y-6 sm:space-y-8 py-4 sm:py-8">
+            <div className="flex items-center justify-center gap-4 sm:gap-10">
               {/* Home team */}
-              <div className="flex flex-col items-center gap-3">
+              <div className="flex flex-col items-center gap-2 sm:gap-3 flex-1 min-w-0">
                 <TeamBadge name={match.home_team?.name} shieldUrl={match.home_team?.shield_url} size="xl" />
-                <span className="font-extrabold text-white text-base sm:text-xl text-center">
+                <span className="font-extrabold text-white text-sm sm:text-xl text-center leading-tight">
                   {match.home_team?.name}
                 </span>
               </div>
 
-              <span className="text-3xl font-extrabold text-slate-500">VS</span>
+              <span className="text-2xl sm:text-3xl font-extrabold text-slate-500 flex-shrink-0">VS</span>
 
               {/* Away team */}
-              <div className="flex flex-col items-center gap-3">
+              <div className="flex flex-col items-center gap-2 sm:gap-3 flex-1 min-w-0">
                 <TeamBadge name={match.away_team?.name} shieldUrl={match.away_team?.shield_url} size="xl" />
-                <span className="font-extrabold text-white text-base sm:text-xl text-center">
+                <span className="font-extrabold text-white text-sm sm:text-xl text-center leading-tight">
                   {match.away_team?.name}
                 </span>
               </div>
@@ -380,21 +380,23 @@ export default function MatchLive() {
 
             {/* Scoreboard */}
             <Card className="bg-[#0f1a2e] border-slate-700/50">
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between gap-4">
+              <CardContent className="p-3 sm:p-6">
+                <div className="flex items-start justify-between gap-1 sm:gap-4">
                   {/* Home */}
-                  <div className="flex-1 text-center">
-                    <TeamBadge name={match.home_team?.name} shieldUrl={match.home_team?.shield_url} size="lg" className="mx-auto mb-2" />
-                    <p className="font-extrabold text-white text-base sm:text-xl mt-1">
+                  <div className="flex-1 text-center min-w-0">
+                    <div className="hidden sm:block">
+                      <TeamBadge name={match.home_team?.name} shieldUrl={match.home_team?.shield_url} size="lg" className="mx-auto mb-2" />
+                    </div>
+                    <p className="font-extrabold text-white text-xs sm:text-xl leading-tight">
                       {match.home_team?.name}
                     </p>
                     {/* Card icons */}
-                    <div className="flex items-center justify-center gap-1 mt-1 min-h-[20px]">
+                    <div className="flex items-center justify-center gap-0.5 sm:gap-1 mt-1 min-h-[16px] sm:min-h-[20px]">
                       {Array.from({ length: homeYellows }).map((_, i) => (
-                        <span key={`hy${i}`} className="inline-block w-3.5 h-5 rounded-sm bg-yellow-400" />
+                        <span key={`hy${i}`} className="inline-block w-2.5 h-3.5 sm:w-3.5 sm:h-5 rounded-sm bg-yellow-400" />
                       ))}
                       {Array.from({ length: homeReds }).map((_, i) => (
-                        <span key={`hr${i}`} className="inline-block w-3.5 h-5 rounded-sm bg-red-500" />
+                        <span key={`hr${i}`} className="inline-block w-2.5 h-3.5 sm:w-3.5 sm:h-5 rounded-sm bg-red-500" />
                       ))}
                     </div>
                     {/* Goal scorers */}
@@ -404,10 +406,10 @@ export default function MatchLive() {
                       return (homeGoals.length > 0 || homeOwnGoals.length > 0) ? (
                         <div className="mt-2 space-y-0.5">
                           {homeGoals.map((e: MatchEvent) => (
-                            <p key={e.id} className="text-[11px] text-slate-400">⚽ {e.player?.name} {e.minute != null ? `${e.minute}'` : ''}</p>
+                            <p key={e.id} className="text-[10px] sm:text-[11px] text-slate-400">⚽ {e.player?.name} {e.minute != null ? `${e.minute}'` : ''}</p>
                           ))}
                           {homeOwnGoals.map((e: MatchEvent) => (
-                            <p key={e.id} className="text-[11px] text-red-400">⚽ G.C. {e.minute != null ? `${e.minute}'` : ''}</p>
+                            <p key={e.id} className="text-[10px] sm:text-[11px] text-red-400">⚽ G.C. {e.minute != null ? `${e.minute}'` : ''}</p>
                           ))}
                         </div>
                       ) : null
@@ -415,10 +417,10 @@ export default function MatchLive() {
                   </div>
 
                   {/* Score */}
-                  <div className="text-center">
-                    <div className="text-5xl sm:text-6xl font-extrabold text-white tracking-tight">
-                      {match.home_score}{' '}
-                      <span className="text-slate-500 text-3xl sm:text-4xl mx-1">&times;</span>{' '}
+                  <div className="text-center flex-shrink-0 px-1 sm:px-2">
+                    <div className="text-3xl sm:text-6xl font-extrabold text-white tracking-tight whitespace-nowrap">
+                      {match.home_score}
+                      <span className="text-slate-500 text-xl sm:text-4xl mx-1 sm:mx-2">&times;</span>
                       {match.away_score}
                     </div>
                     {match.home_score_extra != null && match.away_score_extra != null && (
@@ -450,18 +452,20 @@ export default function MatchLive() {
                   </div>
 
                   {/* Away */}
-                  <div className="flex-1 text-center">
-                    <TeamBadge name={match.away_team?.name} shieldUrl={match.away_team?.shield_url} size="lg" className="mx-auto mb-2" />
-                    <p className="font-extrabold text-white text-base sm:text-xl mt-1">
+                  <div className="flex-1 text-center min-w-0">
+                    <div className="hidden sm:block">
+                      <TeamBadge name={match.away_team?.name} shieldUrl={match.away_team?.shield_url} size="lg" className="mx-auto mb-2" />
+                    </div>
+                    <p className="font-extrabold text-white text-xs sm:text-xl leading-tight">
                       {match.away_team?.name}
                     </p>
                     {/* Card icons */}
-                    <div className="flex items-center justify-center gap-1 mt-1 min-h-[20px]">
+                    <div className="flex items-center justify-center gap-0.5 sm:gap-1 mt-1 min-h-[16px] sm:min-h-[20px]">
                       {Array.from({ length: awayYellows }).map((_, i) => (
-                        <span key={`ay${i}`} className="inline-block w-3.5 h-5 rounded-sm bg-yellow-400" />
+                        <span key={`ay${i}`} className="inline-block w-2.5 h-3.5 sm:w-3.5 sm:h-5 rounded-sm bg-yellow-400" />
                       ))}
                       {Array.from({ length: awayReds }).map((_, i) => (
-                        <span key={`ar${i}`} className="inline-block w-3.5 h-5 rounded-sm bg-red-500" />
+                        <span key={`ar${i}`} className="inline-block w-2.5 h-3.5 sm:w-3.5 sm:h-5 rounded-sm bg-red-500" />
                       ))}
                     </div>
                     {/* Goal scorers */}
@@ -471,10 +475,10 @@ export default function MatchLive() {
                       return (awayGoals.length > 0 || awayOwnGoals.length > 0) ? (
                         <div className="mt-2 space-y-0.5">
                           {awayGoals.map((e: MatchEvent) => (
-                            <p key={e.id} className="text-[11px] text-slate-400">⚽ {e.player?.name} {e.minute != null ? `${e.minute}'` : ''}</p>
+                            <p key={e.id} className="text-[10px] sm:text-[11px] text-slate-400">⚽ {e.player?.name} {e.minute != null ? `${e.minute}'` : ''}</p>
                           ))}
                           {awayOwnGoals.map((e: MatchEvent) => (
-                            <p key={e.id} className="text-[11px] text-red-400">⚽ G.C. {e.minute != null ? `${e.minute}'` : ''}</p>
+                            <p key={e.id} className="text-[10px] sm:text-[11px] text-red-400">⚽ G.C. {e.minute != null ? `${e.minute}'` : ''}</p>
                           ))}
                         </div>
                       ) : null
@@ -487,7 +491,7 @@ export default function MatchLive() {
             {/* Bolão stats */}
             {poolStats && poolStats.total > 0 && (
               <Card className="bg-[#0f1a2e] border-amber-500/20">
-                <CardContent className="p-4 space-y-4">
+                <CardContent className="p-3 sm:p-4 space-y-3 sm:space-y-4">
                   {/* Header */}
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -500,18 +504,18 @@ export default function MatchLive() {
                   </div>
 
                   {/* Stats row */}
-                  <div className="grid grid-cols-3 gap-2 text-center">
-                    <div className="bg-amber-500/10 rounded-lg p-3 border border-amber-500/20">
-                      <div className="text-2xl font-extrabold text-amber-400">{poolStats.scoringCount}</div>
-                      <div className="text-[10px] text-amber-400/70 font-semibold uppercase tracking-wide mt-0.5">Pontuaram</div>
+                  <div className="grid grid-cols-3 gap-1.5 sm:gap-2 text-center">
+                    <div className="bg-amber-500/10 rounded-lg p-2 sm:p-3 border border-amber-500/20">
+                      <div className="text-xl sm:text-2xl font-extrabold text-amber-400">{poolStats.scoringCount}</div>
+                      <div className="text-[9px] sm:text-[10px] text-amber-400/70 font-semibold uppercase tracking-wide mt-0.5">Pontuaram</div>
                     </div>
-                    <div className="bg-green-500/10 rounded-lg p-3 border border-green-500/20">
-                      <div className="text-2xl font-extrabold text-green-400">{poolStats.exactCount}</div>
-                      <div className="text-[10px] text-green-400/70 font-semibold uppercase tracking-wide mt-0.5">Placar exato</div>
+                    <div className="bg-green-500/10 rounded-lg p-2 sm:p-3 border border-green-500/20">
+                      <div className="text-xl sm:text-2xl font-extrabold text-green-400">{poolStats.exactCount}</div>
+                      <div className="text-[9px] sm:text-[10px] text-green-400/70 font-semibold uppercase tracking-wide mt-0.5">Placar exato</div>
                     </div>
-                    <div className="bg-red-500/10 rounded-lg p-3 border border-red-500/20">
-                      <div className="text-2xl font-extrabold text-red-400">{poolStats.lostCount}</div>
-                      <div className="text-[10px] text-red-400/70 font-semibold uppercase tracking-wide mt-0.5">Zerados</div>
+                    <div className="bg-red-500/10 rounded-lg p-2 sm:p-3 border border-red-500/20">
+                      <div className="text-xl sm:text-2xl font-extrabold text-red-400">{poolStats.lostCount}</div>
+                      <div className="text-[9px] sm:text-[10px] text-red-400/70 font-semibold uppercase tracking-wide mt-0.5">Zerados</div>
                     </div>
                   </div>
 
@@ -522,27 +526,48 @@ export default function MatchLive() {
                         Top {poolStats.top5.length} nesta partida
                       </p>
                       <div className="space-y-1.5">
-                        {poolStats.top5.map((entry, idx) => (
-                          <div key={entry.id} className="flex items-center gap-2.5">
-                            <span className={`text-xs font-extrabold w-5 text-center flex-shrink-0 ${
+                        {poolStats.top5.map((entry, idx) => {
+                          const tierLabel = POINT_TIER_LABELS[entry.pts as keyof typeof POINT_TIER_LABELS]
+                          const tierStyle =
+                            entry.pts === 15 ? 'bg-green-500/15 text-green-400 border-green-500/30' :
+                            entry.pts === 10 ? 'bg-blue-500/15 text-blue-400 border-blue-500/30' :
+                            entry.pts === 8  ? 'bg-cyan-500/15 text-cyan-400 border-cyan-500/30' :
+                            entry.pts === 6  ? 'bg-purple-500/15 text-purple-400 border-purple-500/30' :
+                            entry.pts === 5  ? 'bg-amber-500/15 text-amber-400 border-amber-500/30' :
+                            entry.pts === 2  ? 'bg-slate-500/15 text-slate-400 border-slate-500/30' :
+                            'bg-red-500/15 text-red-400 border-red-500/30'
+                          return (
+                          <div key={entry.id} className="flex items-center gap-1.5 sm:gap-2.5">
+                            <span className={`text-xs font-extrabold w-4 sm:w-5 text-center flex-shrink-0 ${
                               idx === 0 ? 'text-amber-400' : 'text-slate-500'
                             }`}>{idx + 1}</span>
                             <div className="h-5 w-5 rounded-full bg-slate-700 flex items-center justify-center text-[9px] font-bold text-slate-300 flex-shrink-0">
                               {entry.name.charAt(0)}
                             </div>
-                            <span className="text-sm text-slate-200 flex-1 truncate">{entry.name}</span>
-                            <span className="text-xs text-slate-400 flex-shrink-0 tabular-nums">
-                              {entry.home_score} × {entry.away_score}
+                            <span className="text-xs sm:text-sm text-slate-200 flex-1 truncate">{entry.name}</span>
+                            {tierLabel && (
+                              <span className={`text-[8px] sm:text-[9px] font-semibold px-1 sm:px-1.5 py-0.5 rounded border flex-shrink-0 ${tierStyle}`}>
+                                {tierLabel}
+                              </span>
+                            )}
+                            {!tierLabel && entry.pts === 0 && (
+                              <span className="text-[8px] sm:text-[9px] font-semibold px-1 sm:px-1.5 py-0.5 rounded border flex-shrink-0 bg-red-500/15 text-red-400 border-red-500/30">
+                                Zerado
+                              </span>
+                            )}
+                            <span className="text-[10px] sm:text-xs text-slate-400 flex-shrink-0 tabular-nums">
+                              {entry.home_score}×{entry.away_score}
                             </span>
-                            <span className={`text-xs font-bold flex-shrink-0 min-w-[36px] text-right ${
+                            <span className={`text-[10px] sm:text-xs font-bold flex-shrink-0 text-right ${
                               entry.pts === 15 ? 'text-green-400' :
                               entry.pts >= 8 ? 'text-amber-400' :
                               entry.pts > 0 ? 'text-slate-300' : 'text-red-400'
                             }`}>
-                              {entry.pts} pts
+                              {entry.pts}pts
                             </span>
                           </div>
-                        ))}
+                          )
+                        })}
                       </div>
                     </div>
                   )}
@@ -553,7 +578,7 @@ export default function MatchLive() {
             {/* Events timeline */}
             {events && events.length > 0 && (
               <Card className="bg-[#0f1a2e] border-slate-700/50">
-                <CardContent className="p-4">
+                <CardContent className="p-3 sm:p-4">
                   <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">
                     Eventos da Partida
                   </h3>
