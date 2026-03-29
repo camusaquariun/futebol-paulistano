@@ -153,14 +153,14 @@ export default function MatchDetail() {
     await supabase.from('matches').update({
       match_state: 'first_half',
       half_start_time: new Date().toISOString(),
-      home_score: 0,
-      away_score: 0,
-      home_fouls: 0,
-      away_fouls: 0,
+      home_score: 0, away_score: 0,
+      home_fouls: 0, away_fouls: 0,
+      home_fouls_1h: 0, away_fouls_1h: 0,
+      home_fouls_2h: 0, away_fouls_2h: 0,
       status: 'finished',
     }).eq('id', matchId)
-    setHomeScore(0)
-    setAwayScore(0)
+    setHomeScore(0); setAwayScore(0)
+    setHomeFouls(0); setAwayFouls(0)
     refetchMatch()
   }
 
@@ -172,21 +172,40 @@ export default function MatchDetail() {
 
   const endFirstHalf = async () => {
     if (!matchId) return
-    await supabase.from('matches').update({ match_state: 'halftime', half_start_time: null }).eq('id', matchId)
+    await supabase.from('matches').update({
+      match_state: 'halftime',
+      half_start_time: null,
+      home_fouls_1h: homeFouls,
+      away_fouls_1h: awayFouls,
+    }).eq('id', matchId)
     refetchMatch()
   }
 
   const startSecondHalf = async () => {
     if (!matchId) return
-    await supabase.from('matches').update({ match_state: 'second_half', half_start_time: new Date().toISOString() }).eq('id', matchId)
+    setHomeFouls(0); setAwayFouls(0)
+    await supabase.from('matches').update({
+      match_state: 'second_half',
+      half_start_time: new Date().toISOString(),
+      home_fouls: 0, away_fouls: 0,
+    }).eq('id', matchId)
     refetchMatch()
   }
 
   const finalizeMatch = async () => {
     if (!match || !matchId || !existingEvents) return
     setSaving(true)
-    // Close voting 5 min from now if still open, and finalize match
-    const updates: Record<string, any> = { match_state: 'finished', half_start_time: null }
+    // Save 2nd half fouls and compute totals
+    const fouls1hHome = match.home_fouls_1h ?? 0
+    const fouls1hAway = match.away_fouls_1h ?? 0
+    const updates: Record<string, any> = {
+      match_state: 'finished',
+      half_start_time: null,
+      home_fouls_2h: homeFouls,
+      away_fouls_2h: awayFouls,
+      home_fouls: fouls1hHome + homeFouls,
+      away_fouls: fouls1hAway + awayFouls,
+    }
     if (match.voting_open && !match.voting_closed_at) {
       updates.voting_closed_at = new Date(Date.now() + 5 * 60 * 1000).toISOString()
     }

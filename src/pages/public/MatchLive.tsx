@@ -444,10 +444,18 @@ export default function MatchLive() {
                         <span className="text-xs font-bold text-gold-400">Destaque: {match.motm_player.name}</span>
                       </div>
                     )}
-                    {(match.home_fouls > 0 || match.away_fouls > 0) && (
-                      <p className="text-xs text-slate-500 mt-2">
-                        Faltas: {match.home_fouls ?? 0} - {match.away_fouls ?? 0}
-                      </p>
+                    {(match.home_fouls > 0 || match.away_fouls > 0 || match.home_fouls_1h > 0 || match.away_fouls_1h > 0) && (
+                      <div className="text-xs text-slate-500 mt-2 space-y-0.5">
+                        {match.match_state === 'finished' ? (
+                          <>
+                            <p>Faltas 1ºT: {match.home_fouls_1h ?? 0} - {match.away_fouls_1h ?? 0}</p>
+                            <p>Faltas 2ºT: {match.home_fouls_2h ?? 0} - {match.away_fouls_2h ?? 0}</p>
+                            <p className="text-slate-400 font-semibold">Total: {match.home_fouls ?? 0} - {match.away_fouls ?? 0}</p>
+                          </>
+                        ) : (
+                          <p>Faltas: {match.home_fouls ?? 0} - {match.away_fouls ?? 0}</p>
+                        )}
+                      </div>
                     )}
                   </div>
 
