@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { usePlayersByChampionship, useCategories, useTeams, useSavePlayer, useDeletePlayer } from '@/hooks/useSupabase'
+import { usePlayersByChampionship, useCategories, useTeams, useSavePlayer, useDeletePlayer, useChampionshipCategories } from '@/hooks/useSupabase'
 import { useAdminChampionship } from '@/hooks/useAdminChampionship'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Link } from 'react-router-dom'
@@ -20,6 +21,7 @@ export default function PlayersAdmin() {
   const { selectedId: championshipId } = useAdminChampionship()
   const { data: players, isLoading } = usePlayersByChampionship(championshipId)
   const { data: categories } = useCategories()
+  const { data: champCategories } = useChampionshipCategories(championshipId)
   const { data: teams } = useTeams(championshipId)
   const saveMutation = useSavePlayer()
   const deleteMutation = useDeletePlayer()
@@ -28,6 +30,11 @@ export default function PlayersAdmin() {
   const [name, setName] = useState('')
   const [assignments, setAssignments] = useState<TeamAssignment[]>([])
   const [search, setSearch] = useState('')
+  const [filterCategory, setFilterCategory] = useState('all')
+
+  const activeCategories = categories?.filter(c =>
+    champCategories?.some((cc: any) => cc.category_id === c.id)
+  ) ?? []
 
   const openNew = () => {
     setEditing(null)
@@ -70,9 +77,11 @@ export default function PlayersAdmin() {
     }
   }
 
-  const filtered = players?.filter(p =>
-    p.name.toLowerCase().includes(search.toLowerCase())
-  ) ?? []
+  const filtered = (players ?? []).filter((p: any) => {
+    const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase())
+    const matchesCat = filterCategory === 'all' || p.links?.some((l: any) => l.category_id === filterCategory)
+    return matchesSearch && matchesCat
+  })
 
   if (!championshipId) {
     return <div className="text-center py-12 text-slate-400">Selecione um campeonato no menu lateral.</div>
@@ -88,31 +97,58 @@ export default function PlayersAdmin() {
         <Button onClick={openNew}><Plus className="h-4 w-4 mr-2" />Novo Jogador</Button>
       </div>
 
-      <Input
-        placeholder="Buscar jogador..."
-        value={search}
-        onChange={e => setSearch(e.target.value)}
-        className="max-w-sm"
-      />
+      <div className="flex flex-wrap gap-3">
+        <Input
+          placeholder="Buscar jogador..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="w-full sm:w-72"
+        />
+        <select
+          value={filterCategory}
+          onChange={e => setFilterCategory(e.target.value)}
+          className="bg-navy-800 border border-navy-600 rounded-lg px-3 py-2 text-white text-sm focus:border-pitch-500 focus:outline-none"
+        >
+          <option value="all">Todas categorias</option>
+          {activeCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+      </div>
 
       {isLoading ? (
         <div className="flex justify-center py-8"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-pitch-500" /></div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {filtered.map(player => (
+          {filtered.map((player: any) => (
             <Card key={player.id}>
-              <CardContent className="p-4 flex items-center justify-between">
+              <CardContent className="p-4 flex items-center justify-between gap-2">
                 <Link to={`/admin/jogadores/${player.id}`} className="flex items-center gap-2.5 flex-1 min-w-0 hover:opacity-80 transition-opacity">
-                  <div className="h-8 w-8 rounded-full overflow-hidden flex-shrink-0 border border-navy-600">
-                    {(player as any).photo_url ? (
-                      <img src={(player as any).photo_url} alt={player.name} className="h-full w-full object-cover" />
+                  <div className="h-9 w-9 rounded-full overflow-hidden flex-shrink-0 border border-navy-600">
+                    {player.photo_url ? (
+                      <img src={player.photo_url} alt={player.name} className="h-full w-full object-cover" />
                     ) : (
                       <div className="h-full w-full bg-navy-700 flex items-center justify-center text-sm font-bold text-slate-300">
                         {player.name.charAt(0)}
                       </div>
                     )}
                   </div>
-                  <p className="font-medium text-white truncate">{player.name}</p>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-white truncate">{player.name}</p>
+                    {player.links?.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-0.5">
+                        {player.links.map((l: any, i: number) => (
+                          <Badge key={i} variant="secondary" className="text-[9px] px-1.5 py-0">
+                            {l.team_name} · {l.category_name}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
+                    {player.user_email && (
+                      <p className="text-[10px] text-pitch-400 mt-0.5 truncate">👤 {player.user_email}</p>
+                    )}
+                    {!player.user_id && (
+                      <p className="text-[10px] text-slate-500 mt-0.5">Sem usuário vinculado</p>
+                    )}
+                  </div>
                 </Link>
                 <div className="flex gap-1 flex-shrink-0">
                   <Button variant="ghost" size="icon" onClick={() => openEdit(player)}>

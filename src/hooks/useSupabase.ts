@@ -102,29 +102,43 @@ export function usePlayersByChampionship(championshipId: string | undefined) {
   return useQuery({
     queryKey: ['players', 'championship', championshipId],
     queryFn: async () => {
-      // Get all team IDs for this championship, then get players linked to those teams
       const { data: teams } = await supabase
         .from('teams')
         .select('id')
         .eq('championship_id', championshipId!)
-      if (!teams || teams.length === 0) return [] as Player[]
+      if (!teams || teams.length === 0) return [] as any[]
       const teamIds = teams.map(t => t.id)
       const { data, error } = await supabase
         .from('player_teams')
-        .select('player:players!player_teams_player_id_fkey(*)')
+        .select('player_id, team_id, category_id, player:players!player_teams_player_id_fkey(id, name, photo_url, user_id), team:teams!player_teams_team_id_fkey(id, name), category:categories!player_teams_category_id_fkey(id, name)')
         .in('team_id', teamIds)
       if (error) throw error
-      // Deduplicate players (a player may be on multiple teams)
-      const seen = new Set<string>()
-      const players: Player[] = []
-      for (const pt of data) {
-        const p = (pt as any).player as Player
-        if (p && !seen.has(p.id)) {
-          seen.add(p.id)
-          players.push(p)
+      // Group by player
+      const map = new Map<string, any>()
+      for (const pt of data as any[]) {
+        const p = pt.player
+        if (!p) continue
+        if (!map.has(p.id)) {
+          map.set(p.id, { ...p, links: [] })
+        }
+        map.get(p.id).links.push({
+          team_id: pt.team_id,
+          team_name: pt.team?.name ?? '?',
+          category_id: pt.category_id,
+          category_name: pt.category?.name ?? '?',
+        })
+      }
+      // Fetch linked user emails
+      const userIds = [...new Set(Array.from(map.values()).map((p: any) => p.user_id).filter(Boolean))]
+      if (userIds.length > 0) {
+        const { data: emails } = await supabase.from('user_emails').select('user_id, email').in('user_id', userIds)
+        for (const e of emails ?? []) {
+          for (const p of map.values()) {
+            if (p.user_id === (e as any).user_id) p.user_email = (e as any).email
+          }
         }
       }
-      return players.sort((a, b) => a.name.localeCompare(b.name))
+      return Array.from(map.values()).sort((a: any, b: any) => a.name.localeCompare(b.name))
     },
     enabled: !!championshipId,
   })

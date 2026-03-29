@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useTeams, useCategories, useSaveTeam, useDeleteTeam } from '@/hooks/useSupabase'
+import { useTeams, useCategories, useSaveTeam, useDeleteTeam, useChampionshipCategories, useTeamsByCategory } from '@/hooks/useSupabase'
 import { useAdminChampionship } from '@/hooks/useAdminChampionship'
 import { supabase } from '@/lib/supabase'
 import { Card, CardContent } from '@/components/ui/card'
@@ -15,6 +15,13 @@ export default function TeamsAdmin() {
   const { selectedId: championshipId } = useAdminChampionship()
   const { data: teams, isLoading } = useTeams(championshipId)
   const { data: categories } = useCategories()
+  const { data: champCategories } = useChampionshipCategories(championshipId)
+  const [filterCategory, setFilterCategory] = useState('')
+  const { data: categoryTeams } = useTeamsByCategory(championshipId, filterCategory || undefined)
+
+  const activeCategories = categories?.filter(c =>
+    champCategories?.some((cc: any) => cc.category_id === c.id)
+  ) ?? []
   const saveMutation = useSaveTeam()
   const deleteMutation = useDeleteTeam()
   const [open, setOpen] = useState(false)
@@ -79,7 +86,8 @@ export default function TeamsAdmin() {
   }
 
   const [search, setSearch] = useState('')
-  const filteredTeams = teams?.filter(t => t.name.toLowerCase().includes(search.toLowerCase())) ?? []
+  const baseTeams = filterCategory ? (categoryTeams ?? []) : (teams ?? [])
+  const filteredTeams = baseTeams.filter(t => t.name.toLowerCase().includes(search.toLowerCase()))
 
   if (!championshipId) {
     return <div className="text-center py-12 text-slate-400">Selecione um campeonato no menu lateral.</div>
@@ -95,13 +103,23 @@ export default function TeamsAdmin() {
         <Button onClick={openNew}><Plus className="h-4 w-4 mr-2" />Novo Time</Button>
       </div>
 
-      <input
-        type="text"
-        value={search}
-        onChange={e => setSearch(e.target.value)}
-        placeholder="Buscar time pelo nome..."
-        className="w-full sm:w-72 bg-navy-800 border border-navy-600 rounded-lg px-3 py-2 text-white text-sm placeholder:text-slate-500 focus:border-pitch-500 focus:outline-none"
-      />
+      <div className="flex flex-wrap gap-3">
+        <input
+          type="text"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Buscar time pelo nome..."
+          className="w-full sm:w-72 bg-navy-800 border border-navy-600 rounded-lg px-3 py-2 text-white text-sm placeholder:text-slate-500 focus:border-pitch-500 focus:outline-none"
+        />
+        <select
+          value={filterCategory}
+          onChange={e => setFilterCategory(e.target.value)}
+          className="bg-navy-800 border border-navy-600 rounded-lg px-3 py-2 text-white text-sm focus:border-pitch-500 focus:outline-none"
+        >
+          <option value="">Todas categorias</option>
+          {activeCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+      </div>
 
       {isLoading ? (
         <div className="flex justify-center py-8"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-pitch-500" /></div>
