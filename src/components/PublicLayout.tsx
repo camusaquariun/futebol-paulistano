@@ -17,7 +17,7 @@ const navItems = [
 
 export function PublicLayout() {
   const location = useLocation()
-  const { user } = useAuth()
+  const { user, isAdmin } = useAuth()
   const { theme, toggleTheme } = useTheme()
   const [menuOpen, setMenuOpen] = useState(false)
 
@@ -65,7 +65,7 @@ export function PublicLayout() {
                 {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
               </button>
               <Link
-                to="/login"
+                to={user && isAdmin ? '/admin' : '/login'}
                 className={cn(
                   'ml-1 flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
                   user
@@ -74,7 +74,7 @@ export function PublicLayout() {
                 )}
               >
                 <LogIn className="h-4 w-4" />
-                <span>{user ? 'Admin' : 'Entrar'}</span>
+                <span>{user && isAdmin ? 'Admin' : 'Entrar'}</span>
               </Link>
             </nav>
 
@@ -119,7 +119,7 @@ export function PublicLayout() {
                 </Link>
               ))}
               <Link
-                to="/login"
+                to={user && isAdmin ? '/admin' : '/login'}
                 onClick={() => setMenuOpen(false)}
                 className={cn(
                   'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
@@ -129,7 +129,7 @@ export function PublicLayout() {
                 )}
               >
                 <LogIn className="h-4 w-4" />
-                {user ? 'Admin' : 'Entrar'}
+                {user && isAdmin ? 'Admin' : 'Entrar'}
               </Link>
             </nav>
           </div>
