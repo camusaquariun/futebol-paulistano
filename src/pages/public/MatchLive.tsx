@@ -585,14 +585,21 @@ export default function MatchLive() {
                   <div className="space-y-2">
                     {events.map((event: MatchEvent) => {
                       const isHome = event.team_id === match.home_team_id
+                      const isBad = event.event_type === 'own_goal' || event.event_type === 'red_card'
+                      const bgClass = isBad
+                        ? 'bg-red-900/15 border-l-red-500'
+                        : isHome
+                          ? 'bg-blue-900/15 border-l-blue-500'
+                          : 'bg-amber-900/15 border-l-amber-500'
+                      const teamColor = isBad
+                        ? 'text-red-400'
+                        : isHome
+                          ? 'text-blue-400'
+                          : 'text-amber-400'
                       return (
                         <div
                           key={event.id}
-                          className={`flex items-center gap-3 rounded-lg px-3 py-2.5 border-l-4 ${
-                            event.event_type === 'own_goal' || event.event_type === 'red_card'
-                              ? 'bg-red-900/15 border-l-red-500'
-                              : 'bg-blue-900/15 border-l-blue-500'
-                          }`}
+                          className={`flex items-center gap-3 rounded-lg px-3 py-2.5 border-l-4 ${bgClass}`}
                         >
                           <span className="text-lg" role="img">
                             {eventIcon(event.event_type)}
@@ -601,7 +608,7 @@ export default function MatchLive() {
                             <p className="text-sm font-semibold text-white truncate">
                               {event.event_type === 'own_goal' ? <span className="text-red-400">Gol Contra</span> : (event.player?.name ?? 'Jogador')}
                             </p>
-                            <p className={`text-xs font-medium truncate flex items-center gap-1 ${event.event_type === 'own_goal' || event.event_type === 'red_card' ? 'text-red-400' : 'text-blue-400'}`}>
+                            <p className={`text-xs font-medium truncate flex items-center gap-1 ${teamColor}`}>
                               {event.team?.shield_url && <img src={event.team.shield_url} alt="" className="h-4 w-4 rounded-full object-cover inline" />}
                               {event.team?.name}
                             </p>
