@@ -26,7 +26,14 @@ export default function Login() {
     setError(null)
     const result = await signIn(email, password)
     if (result.error) {
-      setError(result.error)
+      const msg = result.error.toLowerCase()
+      if (msg.includes('invalid login') || msg.includes('invalid credentials') || msg.includes('email not confirmed')) {
+        setError('E-mail ou senha incorretos.')
+      } else if (msg.includes('rate limit')) {
+        setError('Muitas tentativas. Aguarde alguns minutos e tente novamente.')
+      } else {
+        setError(result.error)
+      }
       setLoading(false)
     } else {
       navigate(result.isAdmin ? '/admin' : '/meu-time')
@@ -60,7 +67,18 @@ export default function Login() {
     })
 
     if (signUpError) {
-      setError(signUpError.message)
+      const msg = signUpError.message.toLowerCase()
+      if (msg.includes('rate limit') || msg.includes('email rate')) {
+        setError('Limite de emails atingido. Aguarde alguns minutos e tente novamente, ou peça ao administrador para criar sua conta.')
+      } else if (msg.includes('already registered') || msg.includes('user already')) {
+        setError('Este e-mail já está cadastrado. Tente fazer login.')
+      } else if (msg.includes('invalid email')) {
+        setError('E-mail inválido.')
+      } else if (msg.includes('weak password') || msg.includes('password')) {
+        setError('Senha muito fraca. Use pelo menos 6 caracteres.')
+      } else {
+        setError(signUpError.message)
+      }
       setLoading(false)
       return
     }

@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@/components/ui/select'
 import { ChevronLeft, Save, RotateCcw, MapPin } from 'lucide-react'
+import { resolveTeamColors } from '@/lib/utils'
 import type { PlayerTeam } from '@/types/database'
 
 export default function TacticalBoardPage() {
@@ -326,8 +327,8 @@ export default function TacticalBoardPage() {
       <TacticalBoard
         homePlayers={homePlayers}
         awayPlayers={awayPlayers}
-        homeColor={myTeam?.primary_color ?? '#1d4ed8'}
-        awayColor={opponentTeam?.primary_color ?? '#dc2626'}
+        homeColor={resolveTeamColors(myTeam?.primary_color, opponentTeam?.primary_color)[0]}
+        awayColor={resolveTeamColors(myTeam?.primary_color, opponentTeam?.primary_color)[1]}
         homeTeamName={myTeam?.name ?? 'Meu Time'}
         awayTeamName={opponentTeam?.name ?? 'Adversário'}
         onPlayerMove={handlePlayerMove}

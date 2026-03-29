@@ -1,6 +1,6 @@
 import { useParams, useNavigate } from 'react-router-dom'
 import { useState, useRef } from 'react'
-import { useTeams, useTeamRoster, useUpdatePlayerPositions, useSetCaptain, useCategories, useUpdateJerseyNumber } from '@/hooks/useSupabase'
+import { useTeams, useTeamRoster, useUpdatePlayerPositions, useSetCaptain, useCategories, useUpdateJerseyNumber, useSaveTeam } from '@/hooks/useSupabase'
 import { useAdminChampionship } from '@/hooks/useAdminChampionship'
 import { supabase } from '@/lib/supabase'
 import { useQueryClient } from '@tanstack/react-query'
@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { ChevronLeft, Shield, UserCircle, Pencil, Save, X, Crown, AlertTriangle, UserPlus, Camera, Trash2, RefreshCw } from 'lucide-react'
+import { ChevronLeft, Shield, UserCircle, Pencil, Save, X, Crown, AlertTriangle, UserPlus, Camera, Trash2, RefreshCw, Upload } from 'lucide-react'
 import { ALL_POSITIONS } from '@/types/database'
 import type { PlayerTeam } from '@/types/database'
 
@@ -250,10 +250,20 @@ export default function TeamDetail() {
   const updatePositions = useUpdatePlayerPositions()
   const setCaptain = useSetCaptain()
   const updateJersey = useUpdateJerseyNumber()
+  const saveMutation = useSaveTeam()
   const queryClient = useQueryClient()
   const [editing, setEditing] = useState(false)
   const [savingId, setSavingId] = useState<string | null>(null)
   const [settingCaptain, setSettingCaptain] = useState(false)
+
+  // Edit team dialog
+  const [teamEditOpen, setTeamEditOpen] = useState(false)
+  const [editName, setEditName] = useState('')
+  const [editShieldUrl, setEditShieldUrl] = useState<string | null>(null)
+  const [editPrimaryColor, setEditPrimaryColor] = useState('#1d4ed8')
+  const [editSecondaryColor, setEditSecondaryColor] = useState('#ffffff')
+  const [editSelectedCategories, setEditSelectedCategories] = useState<string[]>([])
+  const [editUploading, setEditUploading] = useState(false)
 
   // Status change (injury/withdrawal) + replacement
   const [statusOpen, setStatusOpen] = useState(false)
@@ -390,6 +400,47 @@ export default function TeamDetail() {
     setSettingCaptain(false)
   }
 
+  const openTeamEdit = async () => {
+    if (!team) return
+    setEditName(team.name)
+    setEditShieldUrl(team.shield_url ?? null)
+    setEditPrimaryColor(team.primary_color || '#1d4ed8')
+    setEditSecondaryColor(team.secondary_color || '#ffffff')
+    // Load current categories for this team
+    const { data: tc } = await supabase.from('team_categories').select('category_id').eq('team_id', team.id)
+    setEditSelectedCategories((tc ?? []).map((r: any) => r.category_id))
+    setTeamEditOpen(true)
+  }
+
+  const handleTeamEditUpload = async (file: File) => {
+    setEditUploading(true)
+    const ext = file.name.split('.').pop()
+    const path = `${crypto.randomUUID()}.${ext}`
+    const { error } = await supabase.storage.from('shields').upload(path, file)
+    if (!error) {
+      const { data } = supabase.storage.from('shields').getPublicUrl(path)
+      setEditShieldUrl(data.publicUrl)
+    }
+    setEditUploading(false)
+  }
+
+  const handleTeamEditSave = async () => {
+    if (!team) return
+    await saveMutation.mutateAsync({
+      team: {
+        id: team.id,
+        name: editName,
+        shield_url: editShieldUrl,
+        championship_id: championshipId,
+        primary_color: editPrimaryColor,
+        secondary_color: editSecondaryColor,
+      },
+      categoryIds: editSelectedCategories,
+    })
+    queryClient.invalidateQueries({ queryKey: ['teams'] })
+    setTeamEditOpen(false)
+  }
+
   if (!team) {
     return (
       <div className="space-y-4">
@@ -417,7 +468,10 @@ export default function TeamDetail() {
           </div>
         )}
         <div className="flex-1">
-          <h1 className="text-2xl font-bold text-white">{team.name}</h1>
+          <button onClick={openTeamEdit} className="group flex items-center gap-2 hover:opacity-80 transition-opacity">
+            <h1 className="text-2xl font-bold text-white group-hover:text-pitch-400 transition-colors">{team.name}</h1>
+            <Pencil className="h-4 w-4 text-slate-500 group-hover:text-pitch-400 transition-colors" />
+          </button>
           {activeRoster && (
             <div className="flex items-center gap-2 mt-1 flex-wrap">
               <Badge variant="secondary">{activeRoster.catName}</Badge>
@@ -480,6 +534,76 @@ export default function TeamDetail() {
           </div>
         )}
       </Card>
+
+      {/* Edit Team dialog */}
+      <Dialog open={teamEditOpen} onOpenChange={setTeamEditOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar Time</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Nome do Time</Label>
+              <Input value={editName} onChange={e => setEditName(e.target.value)} placeholder="Ex: FC Condomínio" />
+            </div>
+            <div className="space-y-2">
+              <Label>Escudo (opcional)</Label>
+              <div className="flex items-center gap-3">
+                {editShieldUrl && <img src={editShieldUrl} alt="" className="h-12 w-12 rounded-full object-cover" />}
+                <label className="cursor-pointer">
+                  <div className="flex items-center gap-2 px-3 py-2 bg-navy-700 rounded-lg text-sm text-slate-300 hover:bg-navy-600 transition-colors">
+                    <Upload className="h-4 w-4" />
+                    {editUploading ? 'Enviando...' : 'Upload'}
+                  </div>
+                  <input type="file" accept="image/*" className="hidden" onChange={e => e.target.files?.[0] && handleTeamEditUpload(e.target.files[0])} />
+                </label>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Cores do Time</Label>
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-slate-400">Principal:</label>
+                  <input type="color" value={editPrimaryColor} onChange={e => setEditPrimaryColor(e.target.value)}
+                    className="h-8 w-10 rounded cursor-pointer bg-transparent border border-navy-600" />
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-slate-400">Secundária:</label>
+                  <input type="color" value={editSecondaryColor} onChange={e => setEditSecondaryColor(e.target.value)}
+                    className="h-8 w-10 rounded cursor-pointer bg-transparent border border-navy-600" />
+                </div>
+                <div className="h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold border border-white/20"
+                  style={{ backgroundColor: editPrimaryColor, color: editSecondaryColor }}>
+                  {editName?.charAt(0) || '?'}
+                </div>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Categorias</Label>
+              <div className="flex gap-2 flex-wrap">
+                {categories?.map(cat => (
+                  <button
+                    key={cat.id}
+                    onClick={() => setEditSelectedCategories(prev =>
+                      prev.includes(cat.id) ? prev.filter(c => c !== cat.id) : [...prev, cat.id]
+                    )}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                      editSelectedCategories.includes(cat.id)
+                        ? 'bg-pitch-600 text-white'
+                        : 'bg-navy-700 text-slate-400 hover:bg-navy-600'
+                    }`}
+                  >
+                    {cat.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <Button onClick={handleTeamEditSave} className="w-full" disabled={saveMutation.isPending}>
+              {saveMutation.isPending ? 'Salvando...' : 'Salvar'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Status change dialog (injury/withdrawal + replacement) */}
       <Dialog open={statusOpen} onOpenChange={setStatusOpen}>

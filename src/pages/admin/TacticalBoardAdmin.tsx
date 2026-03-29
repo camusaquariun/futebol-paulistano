@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '@/hooks/useAuth'
 import { useAdminChampionship } from '@/hooks/useAdminChampionship'
-import { useTeams, useTeamRoster, useCategories, useChampionshipCategories } from '@/hooks/useSupabase'
+import { useTeamsByCategory, useTeamRoster, useCategories, useChampionshipCategories } from '@/hooks/useSupabase'
 import { supabase } from '@/lib/supabase'
 import TacticalBoard, { getDefaultFormation, rotatePositions, FORMATIONS } from '@/components/TacticalBoard'
 import type { FieldOrientation, FormationName } from '@/components/TacticalBoard'
@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@/components/ui/select'
 import { Save, RotateCcw, MapPin } from 'lucide-react'
+import { resolveTeamColors } from '@/lib/utils'
 
 export default function TacticalBoardAdmin() {
   const { user } = useAuth()
@@ -24,19 +25,15 @@ export default function TacticalBoardAdmin() {
   ) ?? []
 
   const [categoryId, setCategoryId] = useState('')
-  const { data: teams } = useTeams(championshipId)
-  const categoryTeams = teams?.filter(t => {
-    // We need team_categories check but teams are already championship-scoped
-    return true
-  }) ?? []
+  const { data: categoryTeams } = useTeamsByCategory(championshipId, categoryId || undefined)
 
   const [homeTeamId, setHomeTeamId] = useState('')
   const [awayTeamId, setAwayTeamId] = useState('')
   const { data: homeRoster } = useTeamRoster(homeTeamId || undefined, categoryId || undefined)
   const { data: awayRoster } = useTeamRoster(awayTeamId || undefined, categoryId || undefined)
 
-  const homeTeam = teams?.find(t => t.id === homeTeamId)
-  const awayTeam = teams?.find(t => t.id === awayTeamId)
+  const homeTeam = categoryTeams?.find(t => t.id === homeTeamId)
+  const awayTeam = categoryTeams?.find(t => t.id === awayTeamId)
 
   const [homePlayers, setHomePlayers] = useState<any[]>([])
   const [awayPlayers, setAwayPlayers] = useState<any[]>([])
@@ -173,19 +170,19 @@ export default function TacticalBoardAdmin() {
             </div>
             <div>
               <label className="text-xs text-slate-400 mb-1 block">Time Casa</label>
-              <Select value={homeTeamId} onValueChange={setHomeTeamId}>
-                <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+              <Select value={homeTeamId} onValueChange={setHomeTeamId} disabled={!categoryId}>
+                <SelectTrigger><SelectValue placeholder={categoryId ? 'Selecione' : 'Selecione a categoria'} /></SelectTrigger>
                 <SelectContent>
-                  {categoryTeams.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+                  {(categoryTeams ?? []).map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
             <div>
               <label className="text-xs text-slate-400 mb-1 block">Time Visitante</label>
-              <Select value={awayTeamId} onValueChange={setAwayTeamId}>
-                <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+              <Select value={awayTeamId} onValueChange={setAwayTeamId} disabled={!categoryId}>
+                <SelectTrigger><SelectValue placeholder={categoryId ? 'Selecione' : 'Selecione a categoria'} /></SelectTrigger>
                 <SelectContent>
-                  {categoryTeams.filter(t => t.id !== homeTeamId).map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+                  {(categoryTeams ?? []).filter(t => t.id !== homeTeamId).map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -245,8 +242,8 @@ export default function TacticalBoardAdmin() {
           <TacticalBoard
             homePlayers={homePlayers}
             awayPlayers={awayPlayers}
-            homeColor={homeTeam?.primary_color ?? '#1d4ed8'}
-            awayColor={awayTeam?.primary_color ?? '#dc2626'}
+            homeColor={resolveTeamColors(homeTeam?.primary_color, awayTeam?.primary_color)[0]}
+            awayColor={resolveTeamColors(homeTeam?.primary_color, awayTeam?.primary_color)[1]}
             homeTeamName={homeTeam?.name ?? 'Casa'}
             awayTeamName={awayTeam?.name ?? 'Visitante'}
             onPlayerMove={handlePlayerMove}
