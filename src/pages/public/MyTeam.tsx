@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 import { useMyPlayer, useMyTeams, useTeamRoster, useTeamMatches, useActiveChampionship } from '@/hooks/useSupabase'
 import { Card, CardContent } from '@/components/ui/card'
@@ -6,6 +7,8 @@ import { Button } from '@/components/ui/button'
 import { Link } from 'react-router-dom'
 import { Users, Calendar, Shield, Crown, Trophy, ChevronRight, UserCircle, MapPin } from 'lucide-react'
 import { formatDate, phaseLabel } from '@/lib/utils'
+import { TeamBadge } from '@/components/TeamBadge'
+import { PlayerLinkWizard } from '@/components/PlayerLinkWizard'
 import type { Match, PlayerTeam } from '@/types/database'
 
 const POSITION_COLORS: Record<string, string> = {
@@ -43,17 +46,13 @@ const RESULT_BORDER: Record<string, string> = {
   draw: 'border-l-4 border-l-yellow-500',
 }
 
-export default function MyTeam() {
-  const { user } = useAuth()
-  const { data: myPlayer } = useMyPlayer(user?.id)
-  const { data: myTeamLinks } = useMyTeams(myPlayer?.id)
-  const { data: championship } = useActiveChampionship()
+const CATEGORY_COLORS: Record<string, string> = {
+  Livre: 'from-pitch-600 to-pitch-800',
+  Master: 'from-blue-600 to-blue-800',
+  Veterano: 'from-gold-500 to-gold-700',
+}
 
-  // Find the team link for the active championship
-  const activeLink = myTeamLinks?.find(
-    (link: any) => link.team?.championship?.id === championship?.id
-  )
-
+function TeamView({ activeLink, myPlayerId, championship }: { activeLink: any; myPlayerId: string | undefined; championship: any }) {
   const teamId = activeLink?.team_id as string | undefined
   const categoryId = activeLink?.category_id as string | undefined
   const team = activeLink?.team as any
@@ -61,7 +60,6 @@ export default function MyTeam() {
   const { data: roster } = useTeamRoster(teamId, categoryId)
   const { data: matches } = useTeamMatches(championship?.id, teamId)
 
-  // Sort roster: captain first, then goalkeepers, then alphabetical
   const sortedRoster = roster?.slice().sort((a: PlayerTeam, b: PlayerTeam) => {
     if (a.is_captain !== b.is_captain) return a.is_captain ? -1 : 1
     const aGk = a.positions?.includes('Goleiro') ? 0 : 1
@@ -71,59 +69,14 @@ export default function MyTeam() {
   })
 
   const captain = roster?.find((pt: PlayerTeam) => pt.is_captain)
-
   const finishedMatches = matches?.filter((m: Match) => m.status === 'finished') ?? []
   const scheduledMatches = matches?.filter((m: Match) => m.status === 'scheduled') ?? []
 
-  // --- Not logged in ---
-  if (!user) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 space-y-4">
-        <Shield className="h-16 w-16 text-slate-600" />
-        <p className="text-lg text-slate-400">Faca login para ver seu time</p>
-        <Button asChild>
-          <Link to="/login">Entrar</Link>
-        </Button>
-      </div>
-    )
-  }
-
-  // --- No player linked ---
-  if (user && myPlayer === null) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 space-y-4">
-        <UserCircle className="h-16 w-16 text-slate-600" />
-        <p className="text-lg text-slate-400 text-center max-w-md">
-          Voce ainda nao foi vinculado a nenhum jogador. Peca ao administrador para vincular sua conta.
-        </p>
-      </div>
-    )
-  }
-
-  // --- Player found but no team in active championship ---
-  if (myPlayer && !activeLink) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 space-y-4">
-        <Trophy className="h-16 w-16 text-slate-600" />
-        <p className="text-lg text-slate-400 text-center max-w-md">
-          Voce nao esta inscrito em nenhum time nesta temporada.
-        </p>
-      </div>
-    )
-  }
-
-  // --- All good: show team page ---
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
       {/* Header */}
       <div className="flex items-center gap-4">
-        {team?.shield_url ? (
-          <img src={team.shield_url} alt="" className="h-16 w-16 rounded-full object-cover" />
-        ) : (
-          <div className="h-16 w-16 rounded-full bg-navy-700 flex items-center justify-center text-xl font-bold text-slate-300">
-            {team?.name?.charAt(0) ?? '?'}
-          </div>
-        )}
+        <TeamBadge name={team?.name} shieldUrl={team?.shield_url} size="lg" />
         <div className="flex-1">
           <div className="flex items-center gap-3 flex-wrap">
             <h1 className="text-2xl font-bold text-white">{team?.name}</h1>
@@ -158,7 +111,7 @@ export default function MyTeam() {
 
       {/* Two-column grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left column - Elenco */}
+        {/* Elenco */}
         <div>
           <div className="flex items-center gap-2 mb-3">
             <UserCircle className="h-5 w-5 text-pitch-400" />
@@ -173,7 +126,7 @@ export default function MyTeam() {
               sortedRoster.map((pt: PlayerTeam) => {
                 const positions = pt.positions?.filter(p => p !== 'Jogador') ?? []
                 const isGk = positions.includes('Goleiro')
-                const isMe = pt.player_id === myPlayer?.id
+                const isMe = pt.player_id === myPlayerId
 
                 return (
                   <div
@@ -210,7 +163,7 @@ export default function MyTeam() {
           </Card>
         </div>
 
-        {/* Right column - Partidas (spanning 2 cols) */}
+        {/* Partidas */}
         <div className="lg:col-span-2">
           <div className="flex items-center gap-2 mb-3">
             <Calendar className="h-5 w-5 text-pitch-400" />
@@ -225,49 +178,49 @@ export default function MyTeam() {
             </Card>
           ) : (
             <div className="space-y-6">
-              {/* Proximos Jogos */}
               {scheduledMatches.length > 0 && (
                 <div>
-                  <h3 className="text-sm font-semibold text-slate-300 mb-3">Proximos Jogos</h3>
+                  <h3 className="text-sm font-semibold text-slate-300 mb-3">Próximos Jogos</h3>
                   <div className="space-y-3">
                     {scheduledMatches.map((match: Match) => (
-                      <Card key={match.id}>
-                        <CardContent className="p-4">
-                          <div className="flex items-center justify-between mb-2">
-                            <Badge variant="secondary" className="text-[10px]">
-                              {phaseLabel(match.phase)}
-                            </Badge>
-                            <Badge variant="secondary">A realizar</Badge>
-                          </div>
-                          <div className="flex items-center justify-between gap-4">
-                            <div className="flex-1 text-right">
-                              <span className={`font-bold text-sm ${match.home_team_id === teamId ? 'text-white' : 'text-slate-400'}`}>
-                                {match.home_team?.name}
-                              </span>
+                      <Link key={match.id} to={`/partidas/${match.id}/ao-vivo`}>
+                        <Card className="card-hover">
+                          <CardContent className="p-4">
+                            <div className="flex items-center justify-between mb-2">
+                              <Badge variant="secondary" className="text-[10px]">
+                                {phaseLabel(match.phase)}
+                              </Badge>
+                              <Badge variant="secondary">A realizar</Badge>
                             </div>
-                            <div className="text-center min-w-[60px]">
-                              <span className="text-lg text-slate-500 font-bold">VS</span>
+                            <div className="flex items-center justify-between gap-4">
+                              <div className="flex-1 text-right">
+                                <span className={`font-bold text-sm ${match.home_team_id === teamId ? 'text-white' : 'text-slate-400'}`}>
+                                  {match.home_team?.name}
+                                </span>
+                              </div>
+                              <div className="text-center min-w-[60px]">
+                                <span className="text-lg text-slate-500 font-bold">VS</span>
+                              </div>
+                              <div className="flex-1 text-left">
+                                <span className={`font-bold text-sm ${match.away_team_id === teamId ? 'text-white' : 'text-slate-400'}`}>
+                                  {match.away_team?.name}
+                                </span>
+                              </div>
                             </div>
-                            <div className="flex-1 text-left">
-                              <span className={`font-bold text-sm ${match.away_team_id === teamId ? 'text-white' : 'text-slate-400'}`}>
-                                {match.away_team?.name}
-                              </span>
-                            </div>
-                          </div>
-                          {match.match_date && (
-                            <div className="flex items-center gap-1 text-xs text-slate-500 mt-2">
-                              <Calendar className="h-3 w-3" />
-                              {formatDate(match.match_date)}
-                            </div>
-                          )}
-                        </CardContent>
-                      </Card>
+                            {match.match_date && (
+                              <div className="flex items-center gap-1 text-xs text-slate-500 mt-2">
+                                <Calendar className="h-3 w-3" />
+                                {formatDate(match.match_date)}
+                              </div>
+                            )}
+                          </CardContent>
+                        </Card>
+                      </Link>
                     ))}
                   </div>
                 </div>
               )}
 
-              {/* Resultados */}
               {finishedMatches.length > 0 && (
                 <div>
                   <h3 className="text-sm font-semibold text-slate-300 mb-3">Resultados</h3>
@@ -322,8 +275,9 @@ export default function MyTeam() {
                               <Link
                                 to={`/meu-time/jogo/${match.id}`}
                                 className="inline-flex items-center gap-1 text-xs text-pitch-400 hover:text-pitch-300 transition-colors font-medium"
+                                onClick={e => e.stopPropagation()}
                               >
-                                Ver pos-jogo
+                                Ver pós-jogo
                                 <ChevronRight className="h-3 w-3" />
                               </Link>
                             </div>
@@ -338,6 +292,122 @@ export default function MyTeam() {
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+export default function MyTeam() {
+  const { user } = useAuth()
+  const { data: myPlayer, isLoading: playerLoading } = useMyPlayer(user?.id)
+  const { data: myTeamLinks, isLoading: linksLoading } = useMyTeams(myPlayer?.id)
+  const { data: championship } = useActiveChampionship()
+  const [selectedLinkId, setSelectedLinkId] = useState<string | null>(null)
+  const [wizardDone, setWizardDone] = useState(false)
+
+  // All links for the active championship
+  const activeLinks = myTeamLinks?.filter(
+    (link: any) => link.team?.championship?.id === championship?.id
+  ) ?? []
+
+  const selectedLink = selectedLinkId
+    ? activeLinks.find((l: any) => l.id === selectedLinkId)
+    : activeLinks.length === 1 ? activeLinks[0] : null
+
+  // --- Not logged in ---
+  if (!user) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 space-y-4">
+        <Shield className="h-16 w-16 text-slate-600" />
+        <p className="text-lg text-slate-400">Faça login para ver seu time</p>
+        <Button asChild>
+          <Link to="/login">Entrar</Link>
+        </Button>
+      </div>
+    )
+  }
+
+  // Loading (also covers post-wizard refresh)
+  if (playerLoading || linksLoading || (wizardDone && myPlayer === null)) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-pitch-500" />
+      </div>
+    )
+  }
+
+  // --- No player linked: show self-link wizard ---
+  if (myPlayer === null && !wizardDone) {
+    return (
+      <div className="py-8 px-2">
+        <PlayerLinkWizard
+          userEmail={user!.email!}
+          onComplete={() => setWizardDone(true)}
+        />
+      </div>
+    )
+  }
+
+  // --- Player found but no team in active championship ---
+  if (activeLinks.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 space-y-4">
+        <Trophy className="h-16 w-16 text-slate-600" />
+        <p className="text-lg text-slate-400 text-center max-w-md">
+          Você não está inscrito em nenhum time nesta temporada.
+        </p>
+      </div>
+    )
+  }
+
+  // --- Multiple teams: show selection if none selected ---
+  if (activeLinks.length > 1 && !selectedLink) {
+    return (
+      <div className="max-w-xl mx-auto space-y-6 py-8">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-white mb-1">Meu Time</h1>
+          <p className="text-slate-400">Você joga em mais de uma categoria. Selecione qual deseja ver:</p>
+        </div>
+        <div className="space-y-3">
+          {activeLinks.map((link: any) => {
+            const catName = link.category?.name ?? 'Categoria'
+            const gradientClass = CATEGORY_COLORS[catName] ?? 'from-navy-600 to-navy-800'
+            return (
+              <button
+                key={link.id}
+                onClick={() => setSelectedLinkId(link.id)}
+                className={`w-full bg-gradient-to-r ${gradientClass} rounded-xl p-5 flex items-center gap-4 hover:opacity-90 transition-opacity text-left`}
+              >
+                <TeamBadge name={link.team?.name} shieldUrl={link.team?.shield_url} size="lg" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xl font-bold text-white">{link.team?.name}</p>
+                  <p className="text-white/70 text-sm mt-0.5">Categoria {catName}</p>
+                </div>
+                <ChevronRight className="h-6 w-6 text-white/60 flex-shrink-0" />
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
+
+  // --- Single team or selected ---
+  return (
+    <div>
+      {/* Back button when multiple teams exist */}
+      {activeLinks.length > 1 && (
+        <button
+          onClick={() => setSelectedLinkId(null)}
+          className="flex items-center gap-1 text-sm text-slate-400 hover:text-white transition-colors mb-4"
+        >
+          ← Trocar categoria
+        </button>
+      )}
+      <TeamView
+        activeLink={selectedLink}
+        myPlayerId={myPlayer?.id}
+        championship={championship}
+      />
     </div>
   )
 }

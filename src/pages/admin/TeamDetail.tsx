@@ -255,6 +255,7 @@ export default function TeamDetail() {
   const [editing, setEditing] = useState(false)
   const [savingId, setSavingId] = useState<string | null>(null)
   const [settingCaptain, setSettingCaptain] = useState(false)
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
 
   // Edit team dialog
   const [teamEditOpen, setTeamEditOpen] = useState(false)
@@ -283,12 +284,17 @@ export default function TeamDetail() {
   const { data: livreRoster } = useTeamRoster(teamId, livreCatId)
   const { data: veteranoRoster } = useTeamRoster(teamId, veteranoCatId)
 
-  const activeRoster = (masterRoster?.length ?? 0) > 0
-    ? { roster: masterRoster!, catName: 'Master', catId: masterCatId! }
-    : (livreRoster?.length ?? 0) > 0
-    ? { roster: livreRoster!, catName: 'Livre', catId: livreCatId! }
-    : (veteranoRoster?.length ?? 0) > 0
-    ? { roster: veteranoRoster!, catName: 'Veterano', catId: veteranoCatId! }
+  // Build list of categories that actually have players
+  const availableCategories = [
+    masterCatId && (masterRoster?.length ?? 0) > 0 ? { id: masterCatId, name: 'Master', roster: masterRoster! } : null,
+    livreCatId && (livreRoster?.length ?? 0) > 0 ? { id: livreCatId, name: 'Livre', roster: livreRoster! } : null,
+    veteranoCatId && (veteranoRoster?.length ?? 0) > 0 ? { id: veteranoCatId, name: 'Veterano', roster: veteranoRoster! } : null,
+  ].filter(Boolean) as { id: string; name: string; roster: PlayerTeam[] }[]
+
+  // Auto-select first category if none selected or selected one no longer has players
+  const activeCatEntry = availableCategories.find(c => c.id === selectedCategoryId) ?? availableCategories[0] ?? null
+  const activeRoster = activeCatEntry
+    ? { roster: activeCatEntry.roster, catName: activeCatEntry.name, catId: activeCatEntry.id }
     : null
 
   // Sort: captain first, then goalkeepers, then alphabetical
@@ -487,12 +493,34 @@ export default function TeamDetail() {
         </div>
       </div>
 
+      {/* Category tabs (only when team has players in multiple categories) */}
+      {availableCategories.length > 1 && (
+        <div className="flex gap-2">
+          {availableCategories.map(cat => (
+            <button
+              key={cat.id}
+              onClick={() => { setSelectedCategoryId(cat.id); setEditing(false) }}
+              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                activeCatEntry?.id === cat.id
+                  ? 'bg-pitch-600 text-white'
+                  : 'bg-navy-800 text-slate-400 hover:bg-navy-700 hover:text-white'
+              }`}
+            >
+              {cat.name}
+              <span className="ml-1.5 text-xs opacity-70">({cat.roster.length})</span>
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Roster */}
       <Card>
         <div className="flex items-center justify-between px-4 py-3 border-b border-navy-700">
           <div className="flex items-center gap-2">
             <UserCircle className="h-5 w-5 text-pitch-400" />
-            <h2 className="text-base font-semibold text-white">Elenco</h2>
+            <h2 className="text-base font-semibold text-white">
+              Elenco{activeRoster ? ` — ${activeRoster.catName}` : ''}
+            </h2>
           </div>
           <Button
             variant={editing ? 'default' : 'outline'}
