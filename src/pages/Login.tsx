@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Trophy, AlertCircle, UserPlus, LogIn } from 'lucide-react'
 
 export default function Login() {
-  const [mode, setMode] = useState<'login' | 'register'>('login')
+  const [mode, setMode] = useState<'login' | 'register' | 'forgot'>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -96,6 +96,28 @@ export default function Login() {
     setLoading(false)
   }
 
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!email) { setError('Informe seu e-mail.'); return }
+    setLoading(true)
+    setError(null)
+    setSuccess(null)
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/login`,
+    })
+    if (resetError) {
+      const msg = resetError.message.toLowerCase()
+      if (msg.includes('rate limit')) {
+        setError('Muitas tentativas. Aguarde alguns minutos.')
+      } else {
+        setError(resetError.message)
+      }
+    } else {
+      setSuccess('E-mail de recuperação enviado! Verifique sua caixa de entrada e spam.')
+    }
+    setLoading(false)
+  }
+
   const resetForm = () => {
     setEmail('')
     setPassword('')
@@ -115,18 +137,20 @@ export default function Login() {
             </div>
           </div>
           <CardTitle className="text-2xl text-white">
-            {mode === 'login' ? 'Entrar' : 'Criar Conta'}
+            {mode === 'login' ? 'Entrar' : mode === 'register' ? 'Criar Conta' : 'Recuperar Senha'}
           </CardTitle>
           <p className="text-sm text-slate-400 mt-1">
             {mode === 'login'
               ? 'Acesse sua conta para participar do campeonato'
-              : 'Registre-se para votar, comentar e acompanhar seu time'
+              : mode === 'register'
+              ? 'Registre-se para votar, comentar e acompanhar seu time'
+              : 'Enviaremos um link para redefinir sua senha'
             }
           </p>
         </CardHeader>
         <CardContent>
           {/* Tab toggle */}
-          <div className="flex gap-1 mb-5 bg-navy-800 rounded-lg p-1">
+          {mode !== 'forgot' && <div className="flex gap-1 mb-5 bg-navy-800 rounded-lg p-1">
             <button
               onClick={() => { setMode('login'); resetForm() }}
               className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-sm font-medium transition-colors ${
@@ -145,8 +169,45 @@ export default function Login() {
               <UserPlus className="h-4 w-4" />
               Registrar
             </button>
-          </div>
+          </div>}
 
+          {mode === 'forgot' ? (
+            <form onSubmit={handleForgotPassword} className="space-y-4">
+              {error && (
+                <div className="flex items-center gap-2 text-red-400 text-sm bg-red-400/10 p-3 rounded-lg">
+                  <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                  {error}
+                </div>
+              )}
+              {success && (
+                <div className="flex items-center gap-2 text-pitch-400 text-sm bg-pitch-400/10 p-3 rounded-lg">
+                  <Trophy className="h-4 w-4 flex-shrink-0" />
+                  {success}
+                </div>
+              )}
+              <div className="space-y-2">
+                <Label htmlFor="email">E-mail</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  placeholder="seu@email.com"
+                  required
+                />
+              </div>
+              <Button type="submit" className="w-full" disabled={loading}>
+                {loading ? 'Enviando...' : 'Enviar link de recuperação'}
+              </Button>
+              <button
+                type="button"
+                onClick={() => { setMode('login'); resetForm() }}
+                className="w-full text-xs text-slate-400 hover:text-white transition-colors text-center"
+              >
+                ← Voltar ao login
+              </button>
+            </form>
+          ) : (
           <form onSubmit={mode === 'login' ? handleLogin : handleRegister} className="space-y-4">
             {error && (
               <div className="flex items-center gap-2 text-red-400 text-sm bg-red-400/10 p-3 rounded-lg">
@@ -213,6 +274,16 @@ export default function Login() {
               </div>
             )}
 
+            {mode === 'login' && (
+              <button
+                type="button"
+                onClick={() => { setMode('forgot'); resetForm(); setEmail(email) }}
+                className="w-full text-xs text-slate-400 hover:text-pitch-400 transition-colors text-right"
+              >
+                Esqueceu a senha?
+              </button>
+            )}
+
             <Button type="submit" className="w-full" disabled={loading}>
               {loading
                 ? (mode === 'login' ? 'Entrando...' : 'Registrando...')
@@ -220,6 +291,7 @@ export default function Login() {
               }
             </Button>
           </form>
+          )}
 
           {mode === 'register' && (
             <p className="text-xs text-slate-500 text-center mt-4">
