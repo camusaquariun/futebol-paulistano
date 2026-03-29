@@ -1,11 +1,12 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { supabase } from '@/lib/supabase'
 import { usePlayers } from '@/hooks/useSupabase'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { Users, Search, Link2, Unlink, UserCircle, Mail, Calendar, Loader2 } from 'lucide-react'
+import { Users, Search, Link2, Unlink, UserCircle, Mail, Calendar, Loader2, ShieldCheck, ShieldOff } from 'lucide-react'
 import type { Player } from '@/types/database'
 
 const EDGE_FN_URL = 'https://euufoowdghcczoovulfq.supabase.co/functions/v1/link-player'
@@ -38,9 +39,33 @@ export default function UsersAdmin() {
   const { data: players, isLoading: playersLoading } = usePlayers()
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
-  const [linking, setLinking] = useState<string | null>(null) // user id being linked
+  const [linking, setLinking] = useState<string | null>(null)
   const [playerSearch, setPlayerSearch] = useState('')
   const [actionLoading, setActionLoading] = useState(false)
+  const [adminLoading, setAdminLoading] = useState<string | null>(null)
+
+  const { data: adminRoles } = useQuery({
+    queryKey: ['user_roles'],
+    queryFn: async () => {
+      const { data } = await supabase.from('user_roles').select('user_id, role').eq('role', 'admin')
+      return new Set((data ?? []).map((r: any) => r.user_id as string))
+    },
+  })
+
+  const handleToggleAdmin = async (userId: string, currentlyAdmin: boolean) => {
+    if (!confirm(currentlyAdmin ? 'Remover permissão de admin?' : 'Tornar este usuário admin?')) return
+    setAdminLoading(userId)
+    try {
+      if (currentlyAdmin) {
+        await supabase.from('user_roles').delete().eq('user_id', userId)
+      } else {
+        await supabase.from('user_roles').upsert({ user_id: userId, role: 'admin' }, { onConflict: 'user_id' })
+      }
+      queryClient.invalidateQueries({ queryKey: ['user_roles'] })
+    } finally {
+      setAdminLoading(null)
+    }
+  }
 
   // Map player user_id -> player for quick lookup
   const playerByUserId = new Map<string, Player>()
@@ -148,6 +173,7 @@ export default function UsersAdmin() {
           {filteredUsers.map(user => {
             const linkedPlayer = playerByUserId.get(user.id)
             const isLinking = linking === user.id
+            const isAdmin = adminRoles?.has(user.id) ?? false
 
             return (
               <Card key={user.id} className="border-navy-700">
@@ -159,8 +185,15 @@ export default function UsersAdmin() {
                         <UserCircle className="h-8 w-8 text-slate-400" />
                       </div>
                       <div className="min-w-0">
-                        <div className="font-medium text-white truncate">
-                          {user.display_name || 'Sem nome'}
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-white truncate">
+                            {user.display_name || 'Sem nome'}
+                          </span>
+                          {isAdmin && (
+                            <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30 text-[10px] px-1.5 py-0">
+                              <ShieldCheck className="h-3 w-3 mr-0.5" />Admin
+                            </Badge>
+                          )}
                         </div>
                         <div className="flex items-center gap-1.5 text-sm text-slate-400">
                           <Mail className="h-3.5 w-3.5" />
@@ -173,8 +206,27 @@ export default function UsersAdmin() {
                       </div>
                     </div>
 
-                    {/* Link Status */}
+                    {/* Actions */}
                     <div className="flex items-center gap-2 flex-shrink-0">
+                      {/* Admin toggle */}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleToggleAdmin(user.id, isAdmin)}
+                        disabled={adminLoading === user.id}
+                        className={isAdmin
+                          ? 'text-amber-400 hover:text-amber-300 hover:bg-amber-400/10'
+                          : 'text-slate-500 hover:text-amber-400 hover:bg-amber-400/10'
+                        }
+                        title={isAdmin ? 'Remover admin' : 'Tornar admin'}
+                      >
+                        {adminLoading === user.id
+                          ? <Loader2 className="h-4 w-4 animate-spin" />
+                          : isAdmin
+                            ? <ShieldCheck className="h-4 w-4" />
+                            : <ShieldOff className="h-4 w-4" />
+                        }
+                      </Button>
                       {linkedPlayer ? (
                         <div className="flex items-center gap-2">
                           <Badge className="bg-pitch-600/20 text-pitch-400 border-pitch-600/30">
