@@ -32,9 +32,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let cancelled = false
+    let initialDone = false
 
-    // Restore session on mount
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
+    const resolveSession = async (session: any) => {
       if (cancelled) return
       if (session?.user) {
         setUser(session.user)
@@ -43,29 +43,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setIsAdmin(admin)
           localStorage.setItem('fp_is_admin', admin ? '1' : '0')
         }
+      } else {
+        setUser(null)
+        setIsAdmin(false)
+        localStorage.removeItem('fp_is_admin')
       }
       if (!cancelled) setLoading(false)
+    }
+
+    // Restore session on mount
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!initialDone) {
+        initialDone = true
+        resolveSession(session)
+      }
     })
 
-    // Listen for ALL auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    // Listen for subsequent auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (cancelled) return
+      if (event === 'INITIAL_SESSION') {
+        if (!initialDone) {
+          initialDone = true
+          resolveSession(session)
+        }
+        return
+      }
       if (event === 'SIGNED_OUT') {
         setUser(null)
         setIsAdmin(false)
         localStorage.removeItem('fp_is_admin')
-      } else if (session?.user) {
-        // Handles SIGNED_IN, TOKEN_REFRESHED, INITIAL_SESSION
-        setUser(session.user)
-        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-          const admin = await fetchAdminStatus(session.user.id)
-          if (!cancelled) {
-            setIsAdmin(admin)
-            localStorage.setItem('fp_is_admin', admin ? '1' : '0')
-          }
-        }
+        setLoading(false)
+      } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        resolveSession(session)
       }
-      if (!cancelled) setLoading(false)
     })
 
     return () => {
