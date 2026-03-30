@@ -45,7 +45,13 @@ export default function FriendlyAdmin() {
     if (!championship || !matchCatId || !homeTeamId || !awayTeamId || !matchDate) return
     if (homeTeamId === awayTeamId) { alert('Selecione times diferentes.'); return }
     setSavingMatch(true)
-    const dateTime = matchTime ? `${matchDate}T${matchTime}:00` : `${matchDate}T10:00:00`
+    const time = matchTime || '10:00'
+    const d = new Date(`${matchDate}T${time}:00`)
+    const off = -d.getTimezoneOffset()
+    const sign = off >= 0 ? '+' : '-'
+    const hh = String(Math.floor(Math.abs(off) / 60)).padStart(2, '0')
+    const mm = String(Math.abs(off) % 60).padStart(2, '0')
+    const dateTime = `${matchDate}T${time}:00${sign}${hh}:${mm}`
     const { error } = await supabase.from('matches').insert({
       championship_id: championship.id,
       category_id: matchCatId,

@@ -18,6 +18,15 @@ import type { MatchPhase } from '@/types/database'
 const VALID_DAYS = [1, 2, 4] // Monday, Tuesday, Thursday
 const DAY_NAMES: Record<number, string> = { 1: 'Seg', 2: 'Ter', 4: 'Qui' }
 
+function toLocalISOString(date: string, time: string): string {
+  const d = new Date(`${date}T${time}:00`)
+  const off = -d.getTimezoneOffset()
+  const sign = off >= 0 ? '+' : '-'
+  const hh = String(Math.floor(Math.abs(off) / 60)).padStart(2, '0')
+  const mm = String(Math.abs(off) % 60).padStart(2, '0')
+  return `${date}T${time}:00${sign}${hh}:${mm}`
+}
+
 function getValidDates(count: number): string[] {
   const dates: string[] = []
   const d = new Date()
@@ -129,7 +138,7 @@ export default function MatchesAdmin() {
       phase,
       home_team_id: homeTeamId,
       away_team_id: awayTeamId,
-      match_date: matchDate ? `${matchDate}T${matchTime}:00` : null,
+      match_date: matchDate ? toLocalISOString(matchDate, matchTime) : null,
       location: location || null,
       round,
       status: 'scheduled',
@@ -154,7 +163,7 @@ export default function MatchesAdmin() {
   const handleSaveSchedule = async () => {
     if (!scheduleMatchId) return
     setScheduleSaving(true)
-    const matchDate = scheduleDay ? `${scheduleDay}T${scheduleTime}:00` : null
+    const matchDate = scheduleDay ? toLocalISOString(scheduleDay, scheduleTime) : null
     await supabase.from('matches').update({
       match_date: matchDate,
       location: scheduleLocation || null,
@@ -206,7 +215,7 @@ export default function MatchesAdmin() {
   const handleSaveEdit = async () => {
     if (!editMatchId) return
     setEditSaving(true)
-    const dateValue = editMatchDate ? `${editMatchDate}T${editMatchTime}:00` : null
+    const dateValue = editMatchDate ? toLocalISOString(editMatchDate, editMatchTime) : null
     await supabase.from('matches').update({
       category_id: editCategoryId,
       phase: editPhase,
