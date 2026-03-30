@@ -103,6 +103,9 @@ export default function MatchDetail() {
   const [awayScore, setAwayScore] = useState(0)
   const [homeFouls, setHomeFouls] = useState(0)
   const [awayFouls, setAwayFouls] = useState(0)
+  const [showTimerAdjust, setShowTimerAdjust] = useState(false)
+  const [adjustMins, setAdjustMins] = useState('')
+  const [adjustSecs, setAdjustSecs] = useState('')
   const [showGlobalManual, setShowGlobalManual] = useState(false)
   const [manualTeam, setManualTeam] = useState('')
   const [manualType, setManualType] = useState<'goal' | 'own_goal' | 'yellow_card' | 'red_card'>('goal')
@@ -422,6 +425,17 @@ export default function MatchDetail() {
     }
   }, [matchId, homeScore, awayScore])
 
+  const handleAdjustTimer = useCallback(async () => {
+    if (!matchId) return
+    const mins = parseInt(adjustMins) || 0
+    const secs = parseInt(adjustSecs) || 0
+    const totalSeconds = mins * 60 + secs
+    const newStart = new Date(Date.now() - totalSeconds * 1000).toISOString()
+    await supabase.from('matches').update({ half_start_time: newStart }).eq('id', matchId)
+    refetchMatch()
+    setShowTimerAdjust(false)
+  }, [matchId, adjustMins, adjustSecs, refetchMatch])
+
   const startEditEvent = (e: MatchEvent) => {
     setEditingEventId(e.id)
     setEditEventType(e.event_type as any)
@@ -570,13 +584,39 @@ export default function MatchDetail() {
         <div className="bg-gradient-to-r from-navy-800 via-navy-900 to-navy-800 p-5">
           {/* Timer */}
           {gameActive && (
-            <div className="flex justify-center mb-3">
-              <div className={`flex items-center gap-2 px-5 py-2 rounded-full font-bold ${isPlaying ? 'bg-pitch-600/20 text-pitch-400' : 'bg-navy-700 text-slate-400'}`}>
+            <div className="flex flex-col items-center mb-3 gap-2">
+              <button
+                onClick={() => {
+                  if (isPlaying) {
+                    setAdjustMins(String(timer.mins))
+                    setAdjustSecs(String(timer.secs))
+                    setShowTimerAdjust(!showTimerAdjust)
+                  }
+                }}
+                className={`flex items-center gap-2 px-5 py-2 rounded-full font-bold ${isPlaying ? 'bg-pitch-600/20 text-pitch-400 hover:bg-pitch-600/30 cursor-pointer' : 'bg-navy-700 text-slate-400'}`}
+                title={isPlaying ? 'Clique para ajustar o tempo' : undefined}
+              >
                 <Clock className="h-4 w-4" />
                 {isPlaying && <span className="text-sm opacity-70">{matchState === 'first_half' ? '1ºT' : '2ºT'}</span>}
                 {isPlaying ? <span className="text-xl font-mono">{timer.display}</span> : matchState === 'halftime' ? 'Intervalo' : '—'}
                 {isPlaying && <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-pitch-400 opacity-75" /><span className="relative inline-flex rounded-full h-2 w-2 bg-pitch-500" /></span>}
-              </div>
+              </button>
+              {showTimerAdjust && isPlaying && (
+                <div className="flex items-center gap-2 bg-navy-800 rounded-xl px-4 py-2 border border-pitch-500/30">
+                  <span className="text-xs text-slate-400">Ajustar para:</span>
+                  <input type="number" min={0} value={adjustMins} onChange={e => setAdjustMins(e.target.value)}
+                    className="w-12 bg-navy-700 border border-navy-600 rounded px-2 py-1 text-sm text-white text-center" placeholder="min" />
+                  <span className="text-white font-bold">:</span>
+                  <input type="number" min={0} max={59} value={adjustSecs} onChange={e => setAdjustSecs(e.target.value)}
+                    className="w-12 bg-navy-700 border border-navy-600 rounded px-2 py-1 text-sm text-white text-center" placeholder="seg" />
+                  <button onClick={handleAdjustTimer}
+                    className="px-3 py-1 rounded-lg bg-pitch-600 text-white text-xs font-bold hover:bg-pitch-700">
+                    OK
+                  </button>
+                  <button onClick={() => setShowTimerAdjust(false)}
+                    className="text-slate-400 hover:text-white text-xs px-1">✕</button>
+                </div>
+              )}
             </div>
           )}
           <div className="flex items-center justify-between">
