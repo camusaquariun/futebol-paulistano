@@ -555,15 +555,8 @@ export default function MatchesAdmin() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <Label>Data (Seg/Ter/Qui)</Label>
-                <Select value={matchDate} onValueChange={setMatchDate}>
-                  <SelectTrigger><SelectValue placeholder="Selecione a data" /></SelectTrigger>
-                  <SelectContent>
-                    {validDates.map(d => (
-                      <SelectItem key={d} value={d}>{formatDateLabel(d)}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label>Data</Label>
+                <Input type="date" value={matchDate} onChange={e => setMatchDate(e.target.value)} />
               </div>
               <div className="space-y-2">
                 <Label>Horário</Label>
