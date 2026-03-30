@@ -50,6 +50,7 @@ export default function MatchesAdmin() {
   const { data: champCategories } = useChampionshipCategories(championshipId)
   const [filterCategory, setFilterCategory] = useState<string>('all')
   const [filterPhase, setFilterPhase] = useState<string>('all')
+  const [filterMatchday, setFilterMatchday] = useState<string>('all')
   const { data: matches, isLoading } = useMatches(championshipId, filterCategory !== 'all' ? filterCategory : undefined)
 
   const saveMutation = useSaveMatch()
@@ -219,6 +220,72 @@ export default function MatchesAdmin() {
     queryClient.invalidateQueries({ queryKey: ['matches'] })
     alert(`${returnMatches.length} jogos de volta gerados!`)
   }
+
+  // Round-robin schedule generator
+  const handleGenerateRoundRobin = async (catId: string, turnRound: number) => {
+    if (!championshipId) return
+    const catTeams = await supabase
+      .from('teams')
+      .select('id, name, team_categories!inner(category_id)')
+      .eq('championship_id', championshipId)
+      .eq('team_categories.category_id', catId)
+      .order('name')
+    const teams = catTeams.data ?? []
+    if (teams.length < 2) { alert('Precisa de pelo menos 2 times.'); return }
+
+    // Check if matches already exist for this round
+    const existing = matches?.filter(m => m.category_id === catId && m.phase === 'grupos' && m.round === turnRound && m.matchday != null) ?? []
+    if (existing.length > 0) {
+      if (!confirm(`Já existem ${existing.length} jogos com rodadas para o ${turnRound}º turno. Deseja apagar e gerar novamente?`)) return
+      await supabase.from('matches').delete().in('id', existing.map(m => m.id))
+    }
+
+    // Round-robin algorithm (circle method)
+    const teamIds = teams.map(t => t.id)
+    const n = teamIds.length
+    const useGhost = n % 2 !== 0
+    if (useGhost) teamIds.push('__ghost__')
+    const total = teamIds.length
+    const rounds = total - 1
+    const half = total / 2
+
+    const matchesToInsert: any[] = []
+    const fixed = teamIds[0]
+    const rotating = teamIds.slice(1)
+
+    for (let r = 0; r < rounds; r++) {
+      const current = [fixed, ...rotating]
+      for (let i = 0; i < half; i++) {
+        const home = current[i]
+        const away = current[total - 1 - i]
+        if (home === '__ghost__' || away === '__ghost__') continue
+        const isReverse = turnRound === 2
+        matchesToInsert.push({
+          championship_id: championshipId,
+          category_id: catId,
+          phase: 'grupos' as const,
+          home_team_id: isReverse ? away : home,
+          away_team_id: isReverse ? home : away,
+          status: 'scheduled' as const,
+          round: turnRound,
+          matchday: r + 1 + (turnRound === 2 ? rounds : 0),
+        })
+      }
+      // Rotate: move last to second position
+      rotating.push(rotating.shift()!)
+    }
+
+    await supabase.from('matches').insert(matchesToInsert)
+    queryClient.invalidateQueries({ queryKey: ['matches'] })
+    alert(`${matchesToInsert.length} jogos gerados em ${rounds} rodadas!`)
+  }
+
+  // Available matchdays for filter
+  const availableMatchdays = useMemo(() => {
+    const days = new Set<number>()
+    matches?.forEach(m => { if (m.matchday != null) days.add(m.matchday) })
+    return Array.from(days).sort((a, b) => a - b)
+  }, [matches])
 
   const openEditMatch = (match: any) => {
     setEditMatchId(match.id)
@@ -477,7 +544,8 @@ export default function MatchesAdmin() {
   }, [motmData])
 
   const filtered = matches?.filter(m =>
-    filterPhase === 'all' || m.phase === filterPhase
+    (filterPhase === 'all' || m.phase === filterPhase) &&
+    (filterMatchday === 'all' || m.matchday === Number(filterMatchday))
   ) ?? []
 
   if (!championshipId) {
@@ -513,19 +581,34 @@ export default function MatchesAdmin() {
             <SelectItem value="final">Final</SelectItem>
           </SelectContent>
         </Select>
-        {/* Generate return matches for categories with ida e volta */}
+        {availableMatchdays.length > 0 && (
+          <Select value={filterMatchday} onValueChange={setFilterMatchday}>
+            <SelectTrigger className="w-40"><SelectValue placeholder="Rodada" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas Rodadas</SelectItem>
+              {availableMatchdays.map(d => <SelectItem key={d} value={String(d)}>Rodada {d}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        )}
+        {/* Generate round-robin or return matches */}
         {filterCategory !== 'all' && (() => {
           const cc = champCategories?.find((c: any) => c.category_id === filterCategory)
-          const has2ndRound = matches?.some(m => m.category_id === filterCategory && (m as any).round === 2)
-          if ((cc as any)?.turns === 2 && !has2ndRound) {
-            return (
-              <Button variant="outline" size="sm" onClick={() => handleGenerateReturnMatches(filterCategory)}
-                className="border-gold-500/50 text-gold-400 hover:bg-gold-500/10">
-                🔄 Gerar jogos de volta
+          const hasMatchdays = matches?.some(m => m.category_id === filterCategory && m.phase === 'grupos' && m.matchday != null)
+          const has2ndRound = matches?.some(m => m.category_id === filterCategory && m.phase === 'grupos' && m.round === 2)
+          return (
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => handleGenerateRoundRobin(filterCategory, 1)}
+                className="border-pitch-500/50 text-pitch-400 hover:bg-pitch-500/10">
+                ⚽ {hasMatchdays ? 'Regerar' : 'Gerar'} Rodadas (Ida)
               </Button>
-            )
-          }
-          return null
+              {(cc as any)?.turns === 2 && (
+                <Button variant="outline" size="sm" onClick={() => handleGenerateRoundRobin(filterCategory, 2)}
+                  className="border-gold-500/50 text-gold-400 hover:bg-gold-500/10">
+                  🔄 {has2ndRound ? 'Regerar' : 'Gerar'} Rodadas (Volta)
+                </Button>
+              )}
+            </div>
+          )
         })()}
       </div>
 
@@ -542,6 +625,9 @@ export default function MatchesAdmin() {
                     <Badge variant="outline" className="text-xs">{phaseLabel(match.phase)}</Badge>
                     {match.phase === 'grupos' && (match as any).round === 2 && (
                       <Badge variant="outline" className="text-xs text-gold-400 border-gold-500/30">2º Turno</Badge>
+                    )}
+                    {match.matchday != null && (
+                      <Badge variant="outline" className="text-xs text-pitch-400 border-pitch-500/30">Rodada {match.matchday}</Badge>
                     )}
                     <Badge variant={match.status === 'finished' ? 'default' : 'secondary'} className="text-xs">
                       {match.status === 'finished' ? 'Encerrado' : 'Agendado'}

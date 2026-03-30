@@ -148,16 +148,61 @@ function FixturesByCategory({ categoryId }: { categoryId: string }) {
   return (
     <div className="space-y-8">
       {/* Group Phase */}
-      {groupedByPhase['grupos'] && (
-        <div>
-          <h3 className="text-lg font-bold text-white mb-4">{phaseLabel('grupos')}</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {groupedByPhase['grupos'].map(match => (
-              <MatchCard key={match.id} match={match} />
-            ))}
+      {groupedByPhase['grupos'] && (() => {
+        const grupoMatches = groupedByPhase['grupos']
+        const hasMatchdays = grupoMatches.some(m => m.matchday != null)
+        if (hasMatchdays) {
+          // Group by matchday
+          const byMatchday = new Map<number, Match[]>()
+          const noMatchday: Match[] = []
+          grupoMatches.forEach(m => {
+            if (m.matchday != null) {
+              const list = byMatchday.get(m.matchday) ?? []
+              list.push(m)
+              byMatchday.set(m.matchday, list)
+            } else {
+              noMatchday.push(m)
+            }
+          })
+          const sortedDays = Array.from(byMatchday.keys()).sort((a, b) => a - b)
+          return (
+            <div className="space-y-6">
+              {sortedDays.map(day => (
+                <div key={day}>
+                  <h3 className="text-lg font-bold text-white mb-3 flex items-center gap-2">
+                    <span className="bg-pitch-600/20 text-pitch-400 px-3 py-1 rounded-full text-sm">Rodada {day}</span>
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {byMatchday.get(day)!.map(match => (
+                      <MatchCard key={match.id} match={match} />
+                    ))}
+                  </div>
+                </div>
+              ))}
+              {noMatchday.length > 0 && (
+                <div>
+                  <h3 className="text-lg font-bold text-white mb-3">Sem rodada definida</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {noMatchday.map(match => (
+                      <MatchCard key={match.id} match={match} />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )
+        }
+        return (
+          <div>
+            <h3 className="text-lg font-bold text-white mb-4">{phaseLabel('grupos')}</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {grupoMatches.map(match => (
+                <MatchCard key={match.id} match={match} />
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
       {/* Knockout Bracket */}
       {knockoutMatches.length > 0 && <KnockoutBracket matches={knockoutMatches} />}
     </div>

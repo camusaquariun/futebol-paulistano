@@ -98,6 +98,7 @@ export interface Match {
   home_fouls_2h: number | null
   away_fouls_2h: number | null
   round: number
+  matchday: number | null
   match_state: 'pre_match' | 'first_half' | 'halftime' | 'second_half' | 'finished'
   half_start_time: string | null
   voting_open: boolean
