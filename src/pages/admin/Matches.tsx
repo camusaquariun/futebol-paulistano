@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Calendar, Plus, Edit, ChevronRight, Star } from 'lucide-react'
+import { Calendar, Plus, Edit, ChevronRight, Star, Trash2, Pencil } from 'lucide-react'
 import { formatDate, phaseLabel } from '@/lib/utils'
 import { Link } from 'react-router-dom'
 import type { MatchPhase } from '@/types/database'
@@ -63,6 +63,23 @@ export default function MatchesAdmin() {
   const [location, setLocation] = useState('')
   const [round, setRound] = useState(1)
   const { data: teamsForCategory } = useTeamsByCategory(championshipId, categoryId || undefined)
+
+  // Edit match state
+  const [editOpen, setEditOpen] = useState(false)
+  const [editMatchId, setEditMatchId] = useState('')
+  const [editCategoryId, setEditCategoryId] = useState('')
+  const [editPhase, setEditPhase] = useState<MatchPhase>('grupos')
+  const [editHomeTeamId, setEditHomeTeamId] = useState('')
+  const [editAwayTeamId, setEditAwayTeamId] = useState('')
+  const [editMatchDate, setEditMatchDate] = useState('')
+  const [editMatchTime, setEditMatchTime] = useState('20:00')
+  const [editLocation, setEditLocation] = useState('')
+  const [editRound, setEditRound] = useState(1)
+  const [editSaving, setEditSaving] = useState(false)
+  const { data: teamsForEditCategory } = useTeamsByCategory(championshipId, editCategoryId || undefined)
+
+  // Delete state
+  const [deleting, setDeleting] = useState<string | null>(null)
 
   const activeCategories = categories?.filter(c =>
     champCategories?.some((cc: any) => cc.category_id === c.id)
@@ -141,6 +158,52 @@ export default function MatchesAdmin() {
     await supabase.from('matches').insert(returnMatches)
     queryClient.invalidateQueries({ queryKey: ['matches'] })
     alert(`${returnMatches.length} jogos de volta gerados!`)
+  }
+
+  const openEditMatch = (match: any) => {
+    setEditMatchId(match.id)
+    setEditCategoryId(match.category_id)
+    setEditPhase(match.phase)
+    setEditHomeTeamId(match.home_team_id)
+    setEditAwayTeamId(match.away_team_id)
+    setEditRound((match as any).round ?? 1)
+    setEditLocation(match.location ?? '')
+    if (match.match_date) {
+      const d = new Date(match.match_date)
+      setEditMatchDate(d.toISOString().split('T')[0])
+      const h = d.getHours()
+      setEditMatchTime(h >= 21 ? '21:00' : '20:00')
+    } else {
+      setEditMatchDate('')
+      setEditMatchTime('20:00')
+    }
+    setEditOpen(true)
+  }
+
+  const handleSaveEdit = async () => {
+    if (!editMatchId) return
+    setEditSaving(true)
+    const dateValue = editMatchDate ? `${editMatchDate}T${editMatchTime}:00` : null
+    await supabase.from('matches').update({
+      category_id: editCategoryId,
+      phase: editPhase,
+      home_team_id: editHomeTeamId,
+      away_team_id: editAwayTeamId,
+      match_date: dateValue,
+      location: editLocation || null,
+      round: editRound,
+    }).eq('id', editMatchId)
+    queryClient.invalidateQueries({ queryKey: ['matches'] })
+    setEditSaving(false)
+    setEditOpen(false)
+  }
+
+  const handleDeleteMatch = async (matchId: string) => {
+    if (!confirm('Tem certeza que deseja excluir esta partida? Essa ação não pode ser desfeita.')) return
+    setDeleting(matchId)
+    await supabase.from('matches').delete().eq('id', matchId)
+    queryClient.invalidateQueries({ queryKey: ['matches'] })
+    setDeleting(null)
   }
 
   // Fetch goal events for all finished matches
@@ -310,9 +373,21 @@ export default function MatchesAdmin() {
                   })()}
                 </Link>
                 <div className="flex items-center gap-1 flex-shrink-0">
-                  <Button variant="ghost" size="icon" onClick={() => openSchedule(match)} title="Definir data/hora">
-                    <Calendar className="h-4 w-4 text-slate-400" />
-                  </Button>
+                  {match.status !== 'finished' && (
+                    <>
+                      <Button variant="ghost" size="icon" onClick={() => openEditMatch(match)} title="Editar partida">
+                        <Pencil className="h-4 w-4 text-slate-400" />
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => handleDeleteMatch(match.id)} disabled={deleting === match.id} title="Excluir partida">
+                        <Trash2 className="h-4 w-4 text-red-400/60 hover:text-red-400" />
+                      </Button>
+                    </>
+                  )}
+                  {match.status === 'finished' && (
+                    <Button variant="ghost" size="icon" onClick={() => openSchedule(match)} title="Definir data/hora">
+                      <Calendar className="h-4 w-4 text-slate-400" />
+                    </Button>
+                  )}
                   <Link to={`/admin/partidas/${match.id}`}>
                     <ChevronRight className="h-5 w-5 text-slate-500" />
                   </Link>
@@ -464,6 +539,101 @@ export default function MatchesAdmin() {
             </div>
             <Button onClick={handleSaveSchedule} className="w-full" disabled={scheduleSaving}>
               {scheduleSaving ? 'Salvando...' : 'Salvar Agenda'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit match dialog */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="h-5 w-5 text-pitch-400" />
+              Editar Partida
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Categoria</Label>
+              <Select value={editCategoryId} onValueChange={setEditCategoryId}>
+                <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                <SelectContent>
+                  {activeCategories.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Fase</Label>
+              <Select value={editPhase} onValueChange={v => setEditPhase(v as MatchPhase)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="grupos">Fase de Grupos</SelectItem>
+                  <SelectItem value="semifinal">Semifinal</SelectItem>
+                  <SelectItem value="terceiro_lugar">Terceiro Lugar</SelectItem>
+                  <SelectItem value="final">Final</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Time Casa</Label>
+                <Select value={editHomeTeamId} onValueChange={setEditHomeTeamId}>
+                  <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                  <SelectContent>
+                    {teamsForEditCategory?.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Time Visitante</Label>
+                <Select value={editAwayTeamId} onValueChange={setEditAwayTeamId}>
+                  <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                  <SelectContent>
+                    {teamsForEditCategory?.filter(t => t.id !== editHomeTeamId).map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Data</Label>
+                <Input type="date" value={editMatchDate} onChange={e => setEditMatchDate(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Horário</Label>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setEditMatchTime('20:00')}
+                    className={`flex-1 py-2 rounded-lg text-sm font-bold ${editMatchTime === '20:00' ? 'bg-pitch-600 text-white' : 'bg-navy-800 text-slate-400'}`}>
+                    20:00
+                  </button>
+                  <button type="button" onClick={() => setEditMatchTime('21:00')}
+                    className={`flex-1 py-2 rounded-lg text-sm font-bold ${editMatchTime === '21:00' ? 'bg-pitch-600 text-white' : 'bg-navy-800 text-slate-400'}`}>
+                    21:00
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Local (opcional)</Label>
+                <Input value={editLocation} onChange={e => setEditLocation(e.target.value)} placeholder="Ex: Campo do Condomínio" />
+              </div>
+              {editPhase === 'grupos' && (
+                <div className="space-y-2">
+                  <Label>Turno</Label>
+                  <Select value={String(editRound)} onValueChange={v => setEditRound(Number(v))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1">1º Turno (Ida)</SelectItem>
+                      <SelectItem value="2">2º Turno (Volta)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+            <Button onClick={handleSaveEdit} className="w-full" disabled={editSaving || !editHomeTeamId || !editAwayTeamId}>
+              {editSaving ? 'Salvando...' : 'Salvar Alterações'}
             </Button>
           </div>
         </DialogContent>
