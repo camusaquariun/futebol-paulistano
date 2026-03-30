@@ -142,8 +142,7 @@ export default function MatchesAdmin() {
     if (match.match_date) {
       const d = new Date(match.match_date)
       setScheduleDay(d.toISOString().split('T')[0])
-      const h = d.getHours()
-      setScheduleTime(h >= 21 ? '21:00' : '20:00')
+      setScheduleTime(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`)
     } else {
       setScheduleDay('')
       setScheduleTime('20:00')
@@ -196,8 +195,7 @@ export default function MatchesAdmin() {
     if (match.match_date) {
       const d = new Date(match.match_date)
       setEditMatchDate(d.toISOString().split('T')[0])
-      const h = d.getHours()
-      setEditMatchTime(h >= 21 ? '21:00' : '20:00')
+      setEditMatchTime(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`)
     } else {
       setEditMatchDate('')
       setEditMatchTime('20:00')
@@ -569,16 +567,7 @@ export default function MatchesAdmin() {
               </div>
               <div className="space-y-2">
                 <Label>Horário</Label>
-                <div className="flex gap-2">
-                  <button type="button" onClick={() => setMatchTime('20:00')}
-                    className={`flex-1 py-2 rounded-lg text-sm font-bold ${matchTime === '20:00' ? 'bg-pitch-600 text-white' : 'bg-navy-800 text-slate-400'}`}>
-                    20:00
-                  </button>
-                  <button type="button" onClick={() => setMatchTime('21:00')}
-                    className={`flex-1 py-2 rounded-lg text-sm font-bold ${matchTime === '21:00' ? 'bg-pitch-600 text-white' : 'bg-navy-800 text-slate-400'}`}>
-                    21:00
-                  </button>
-                </div>
+                <Input type="time" value={matchTime} onChange={e => setMatchTime(e.target.value)} />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -629,16 +618,7 @@ export default function MatchesAdmin() {
             </div>
             <div className="space-y-2">
               <Label>Horário</Label>
-              <div className="flex gap-2">
-                <button onClick={() => setScheduleTime('20:00')}
-                  className={`flex-1 py-3 rounded-xl text-lg font-bold transition-all ${scheduleTime === '20:00' ? 'bg-pitch-600 text-white ring-2 ring-pitch-400' : 'bg-navy-800 text-slate-400 hover:bg-navy-700'}`}>
-                  20:00
-                </button>
-                <button onClick={() => setScheduleTime('21:00')}
-                  className={`flex-1 py-3 rounded-xl text-lg font-bold transition-all ${scheduleTime === '21:00' ? 'bg-pitch-600 text-white ring-2 ring-pitch-400' : 'bg-navy-800 text-slate-400 hover:bg-navy-700'}`}>
-                  21:00
-                </button>
-              </div>
+              <Input type="time" value={scheduleTime} onChange={e => setScheduleTime(e.target.value)} />
             </div>
             <div className="space-y-2">
               <Label>Local</Label>
@@ -862,16 +842,7 @@ export default function MatchesAdmin() {
               </div>
               <div className="space-y-2">
                 <Label>Horário</Label>
-                <div className="flex gap-2">
-                  <button type="button" onClick={() => setEditMatchTime('20:00')}
-                    className={`flex-1 py-2 rounded-lg text-sm font-bold ${editMatchTime === '20:00' ? 'bg-pitch-600 text-white' : 'bg-navy-800 text-slate-400'}`}>
-                    20:00
-                  </button>
-                  <button type="button" onClick={() => setEditMatchTime('21:00')}
-                    className={`flex-1 py-2 rounded-lg text-sm font-bold ${editMatchTime === '21:00' ? 'bg-pitch-600 text-white' : 'bg-navy-800 text-slate-400'}`}>
-                    21:00
-                  </button>
-                </div>
+                <Input type="time" value={editMatchTime} onChange={e => setEditMatchTime(e.target.value)} />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
