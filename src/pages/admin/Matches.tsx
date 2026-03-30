@@ -1,7 +1,7 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useMatches, useCategories, useTeamsByCategory, useSaveMatch, useChampionshipCategories } from '@/hooks/useSupabase'
+import { useMatches, useCategories, useTeamsByCategory, useSaveMatch, useChampionshipCategories, useMatchEvents, useTeamRoster } from '@/hooks/useSupabase'
 import { useAdminChampionship } from '@/hooks/useAdminChampionship'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Calendar, Plus, Edit, ChevronRight, Star, Trash2, Pencil } from 'lucide-react'
+import { Calendar, Plus, Edit, ChevronRight, Star, Trash2, Pencil, Undo2 } from 'lucide-react'
 import { formatDate, phaseLabel } from '@/lib/utils'
 import { Link } from 'react-router-dom'
 import type { MatchPhase } from '@/types/database'
@@ -80,6 +80,31 @@ export default function MatchesAdmin() {
 
   // Delete state
   const [deleting, setDeleting] = useState<string | null>(null)
+
+  // Events editor state
+  const [eventsOpen, setEventsOpen] = useState(false)
+  const [eventsMatch, setEventsMatch] = useState<any>(null)
+  const [evtEditId, setEvtEditId] = useState<string | null>(null)
+  const [evtEditType, setEvtEditType] = useState<'goal' | 'own_goal' | 'yellow_card' | 'red_card'>('goal')
+  const [evtEditPlayer, setEvtEditPlayer] = useState('')
+  const [evtEditMinute, setEvtEditMinute] = useState('')
+  const [evtEditHalf, setEvtEditHalf] = useState(1)
+  const [addingEvent, setAddingEvent] = useState(false)
+  const [newEvtTeam, setNewEvtTeam] = useState('')
+  const [newEvtType, setNewEvtType] = useState<'goal' | 'own_goal' | 'yellow_card' | 'red_card'>('goal')
+  const [newEvtPlayer, setNewEvtPlayer] = useState('')
+  const [newEvtMinute, setNewEvtMinute] = useState('')
+  const [newEvtHalf, setNewEvtHalf] = useState(1)
+
+  const { data: eventsMatchEvents, refetch: refetchEventsMatchEvents } = useMatchEvents(eventsMatch?.id)
+  const { data: eventsHomeRoster } = useTeamRoster(eventsMatch?.home_team_id, eventsMatch?.category_id)
+  const { data: eventsAwayRoster } = useTeamRoster(eventsMatch?.away_team_id, eventsMatch?.category_id)
+
+  const eventsAllPlayers = useMemo(() => {
+    const home = eventsHomeRoster?.map(pt => ({ ...pt.player!, jersey_number: pt.jersey_number, teamId: eventsMatch?.home_team_id })) ?? []
+    const away = eventsAwayRoster?.map(pt => ({ ...pt.player!, jersey_number: pt.jersey_number, teamId: eventsMatch?.away_team_id })) ?? []
+    return [...home, ...away]
+  }, [eventsHomeRoster, eventsAwayRoster, eventsMatch])
 
   const activeCategories = categories?.filter(c =>
     champCategories?.some((cc: any) => cc.category_id === c.id)
@@ -196,6 +221,88 @@ export default function MatchesAdmin() {
     queryClient.invalidateQueries({ queryKey: ['matches'] })
     setEditSaving(false)
     setEditOpen(false)
+  }
+
+  const openEventsEditor = (match: any) => {
+    setEventsMatch(match)
+    setEvtEditId(null)
+    setAddingEvent(false)
+    setNewEvtTeam(match.home_team_id)
+    setNewEvtType('goal')
+    setNewEvtPlayer('')
+    setNewEvtMinute('')
+    setNewEvtHalf(1)
+    setEventsOpen(true)
+  }
+
+  const handleDeleteEvent = async (eventId: string, event: any) => {
+    await supabase.from('match_events').delete().eq('id', eventId)
+    // Adjust score
+    if (event.event_type === 'goal' && eventsMatch) {
+      if (event.team_id === eventsMatch.home_team_id) {
+        const s = Math.max(0, (eventsMatch.home_score ?? 0) - 1)
+        await supabase.from('matches').update({ home_score: s }).eq('id', eventsMatch.id)
+      } else {
+        const s = Math.max(0, (eventsMatch.away_score ?? 0) - 1)
+        await supabase.from('matches').update({ away_score: s }).eq('id', eventsMatch.id)
+      }
+    } else if (event.event_type === 'own_goal' && eventsMatch) {
+      if (event.team_id === eventsMatch.home_team_id) {
+        const s = Math.max(0, (eventsMatch.away_score ?? 0) - 1)
+        await supabase.from('matches').update({ away_score: s }).eq('id', eventsMatch.id)
+      } else {
+        const s = Math.max(0, (eventsMatch.home_score ?? 0) - 1)
+        await supabase.from('matches').update({ home_score: s }).eq('id', eventsMatch.id)
+      }
+    }
+    refetchEventsMatchEvents()
+    queryClient.invalidateQueries({ queryKey: ['matches'] })
+    queryClient.invalidateQueries({ queryKey: ['match_goals_bulk'] })
+  }
+
+  const handleSaveEventEdit = async () => {
+    if (!evtEditId) return
+    await supabase.from('match_events').update({
+      event_type: evtEditType,
+      player_id: evtEditType === 'own_goal' ? null : (evtEditPlayer || null),
+      minute: evtEditMinute ? parseInt(evtEditMinute) : null,
+      half: evtEditHalf,
+    }).eq('id', evtEditId)
+    setEvtEditId(null)
+    refetchEventsMatchEvents()
+    queryClient.invalidateQueries({ queryKey: ['match_goals_bulk'] })
+  }
+
+  const handleAddNewEvent = async () => {
+    if (!eventsMatch || !newEvtMinute) return
+    await supabase.from('match_events').insert({
+      match_id: eventsMatch.id,
+      team_id: newEvtTeam,
+      event_type: newEvtType,
+      player_id: newEvtType === 'own_goal' ? null : (newEvtPlayer || null),
+      minute: parseInt(newEvtMinute),
+      half: newEvtHalf,
+    })
+    // Adjust score
+    if (newEvtType === 'goal') {
+      if (newEvtTeam === eventsMatch.home_team_id) {
+        await supabase.from('matches').update({ home_score: (eventsMatch.home_score ?? 0) + 1 }).eq('id', eventsMatch.id)
+      } else {
+        await supabase.from('matches').update({ away_score: (eventsMatch.away_score ?? 0) + 1 }).eq('id', eventsMatch.id)
+      }
+    } else if (newEvtType === 'own_goal') {
+      if (newEvtTeam === eventsMatch.home_team_id) {
+        await supabase.from('matches').update({ away_score: (eventsMatch.away_score ?? 0) + 1 }).eq('id', eventsMatch.id)
+      } else {
+        await supabase.from('matches').update({ home_score: (eventsMatch.home_score ?? 0) + 1 }).eq('id', eventsMatch.id)
+      }
+    }
+    setNewEvtPlayer('')
+    setNewEvtMinute('')
+    setAddingEvent(false)
+    refetchEventsMatchEvents()
+    queryClient.invalidateQueries({ queryKey: ['matches'] })
+    queryClient.invalidateQueries({ queryKey: ['match_goals_bulk'] })
   }
 
   const handleDeleteMatch = async (matchId: string) => {
@@ -384,8 +491,8 @@ export default function MatchesAdmin() {
                     </>
                   )}
                   {match.status === 'finished' && (
-                    <Button variant="ghost" size="icon" onClick={() => openSchedule(match)} title="Definir data/hora">
-                      <Calendar className="h-4 w-4 text-slate-400" />
+                    <Button variant="ghost" size="icon" onClick={() => openEventsEditor(match)} title="Editar eventos">
+                      <Pencil className="h-4 w-4 text-slate-400" />
                     </Button>
                   )}
                   <Link to={`/admin/partidas/${match.id}`}>
@@ -540,6 +647,159 @@ export default function MatchesAdmin() {
             <Button onClick={handleSaveSchedule} className="w-full" disabled={scheduleSaving}>
               {scheduleSaving ? 'Salvando...' : 'Salvar Agenda'}
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Events editor dialog (finished matches) */}
+      <Dialog open={eventsOpen} onOpenChange={setEventsOpen}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="h-5 w-5 text-pitch-400" />
+              Eventos — {eventsMatch?.home_team?.name} {eventsMatch?.home_score} × {eventsMatch?.away_score} {eventsMatch?.away_team?.name}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            {/* Event list */}
+            {eventsMatchEvents && eventsMatchEvents.length > 0 ? (
+              <div className="space-y-1">
+                {[...eventsMatchEvents].reverse().map(e => (
+                  <div key={e.id}>
+                    {evtEditId === e.id ? (
+                      <div className="bg-navy-800 rounded-lg p-3 space-y-2 border border-pitch-500/30">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-semibold text-pitch-400">Editar Evento</span>
+                          <button onClick={() => setEvtEditId(null)} className="text-slate-400 hover:text-white text-xs">✕</button>
+                        </div>
+                        <div className="grid grid-cols-4 gap-1">
+                          {(['goal', 'own_goal', 'yellow_card', 'red_card'] as const).map(t => (
+                            <button key={t} onClick={() => setEvtEditType(t)}
+                              className={`px-2 py-1.5 rounded text-xs font-bold ${evtEditType === t ? 'bg-pitch-600 text-white' : 'bg-navy-700 text-slate-400 hover:bg-navy-600'}`}>
+                              {t === 'goal' ? '⚽ Gol' : t === 'own_goal' ? '⚽ G.C.' : t === 'yellow_card' ? '🟨' : '🟥'}
+                            </button>
+                          ))}
+                        </div>
+                        {evtEditType !== 'own_goal' && (
+                          <select value={evtEditPlayer} onChange={ev => setEvtEditPlayer(ev.target.value)}
+                            className="w-full bg-navy-700 border border-navy-600 rounded px-2 py-1.5 text-sm text-white">
+                            <option value="">— Nenhum —</option>
+                            {eventsAllPlayers.map(p => (
+                              <option key={p.id} value={p.id}>{p.jersey_number ? `${p.jersey_number} - ` : ''}{p.name}</option>
+                            ))}
+                          </select>
+                        )}
+                        <div className="grid grid-cols-2 gap-2">
+                          <input type="number" placeholder="Minuto" value={evtEditMinute} onChange={ev => setEvtEditMinute(ev.target.value)}
+                            className="bg-navy-700 border border-navy-600 rounded px-2 py-1.5 text-sm text-white placeholder:text-slate-500" />
+                          <select value={evtEditHalf} onChange={ev => setEvtEditHalf(Number(ev.target.value))}
+                            className="bg-navy-700 border border-navy-600 rounded px-2 py-1.5 text-sm text-white">
+                            <option value={1}>1º Tempo</option>
+                            <option value={2}>2º Tempo</option>
+                          </select>
+                        </div>
+                        <Button size="sm" className="w-full" onClick={handleSaveEventEdit}>Salvar</Button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 text-sm py-2 px-2 border-b border-navy-800 last:border-0 rounded hover:bg-navy-800/50 group">
+                        <span className="text-[10px] font-bold text-slate-500 bg-navy-700 rounded px-1.5 py-0.5 min-w-[48px] text-center">
+                          {e.half === 2 ? '2ºT' : '1ºT'} {e.minute != null ? `${e.minute}'` : ''}
+                        </span>
+                        <span className="text-lg">
+                          {e.event_type === 'goal' && '⚽'}
+                          {e.event_type === 'own_goal' && '⚽'}
+                          {e.event_type === 'yellow_card' && '🟨'}
+                          {e.event_type === 'red_card' && '🟥'}
+                        </span>
+                        <span className="font-medium text-white flex-1">
+                          {e.event_type === 'own_goal' ? <span className="text-red-400">Gol Contra</span> : (e as any).player?.name ?? '?'}
+                        </span>
+                        <span className="text-slate-500 text-xs">{(e as any).team?.name}</span>
+                        <button onClick={() => {
+                          setEvtEditId(e.id)
+                          setEvtEditType(e.event_type as any)
+                          setEvtEditPlayer(e.player_id ?? '')
+                          setEvtEditMinute(String(e.minute ?? ''))
+                          setEvtEditHalf(e.half ?? 1)
+                        }} className="text-slate-600 hover:text-pitch-400 transition-colors p-1.5 rounded-md hover:bg-pitch-400/10 opacity-0 group-hover:opacity-100" title="Editar">
+                          ✏️
+                        </button>
+                        <button onClick={() => handleDeleteEvent(e.id, e)} className="text-slate-600 hover:text-red-400 transition-colors p-1.5 rounded-md hover:bg-red-400/10 opacity-0 group-hover:opacity-100" title="Excluir">
+                          <Undo2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-slate-500 text-center py-4">Nenhum evento registrado.</p>
+            )}
+
+            {/* Add new event */}
+            {addingEvent ? (
+              <div className="bg-navy-800 rounded-lg p-3 space-y-2 border border-gold-500/30">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-gold-400">Novo Evento</span>
+                  <button onClick={() => setAddingEvent(false)} className="text-slate-400 hover:text-white text-xs">✕</button>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs text-slate-400 mb-1 block">Time</label>
+                    <select value={newEvtTeam} onChange={ev => setNewEvtTeam(ev.target.value)}
+                      className="w-full bg-navy-700 border border-navy-600 rounded px-2 py-1.5 text-sm text-white">
+                      <option value={eventsMatch?.home_team_id}>{eventsMatch?.home_team?.name}</option>
+                      <option value={eventsMatch?.away_team_id}>{eventsMatch?.away_team?.name}</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-400 mb-1 block">Tipo</label>
+                    <select value={newEvtType} onChange={ev => setNewEvtType(ev.target.value as any)}
+                      className="w-full bg-navy-700 border border-navy-600 rounded px-2 py-1.5 text-sm text-white">
+                      <option value="goal">⚽ Gol</option>
+                      <option value="own_goal">⚽ Gol Contra</option>
+                      <option value="yellow_card">🟨 Amarelo</option>
+                      <option value="red_card">🟥 Vermelho</option>
+                    </select>
+                  </div>
+                </div>
+                {newEvtType !== 'own_goal' && (
+                  <div>
+                    <label className="text-xs text-slate-400 mb-1 block">Jogador</label>
+                    <select value={newEvtPlayer} onChange={ev => setNewEvtPlayer(ev.target.value)}
+                      className="w-full bg-navy-700 border border-navy-600 rounded px-2 py-1.5 text-sm text-white">
+                      <option value="">— Selecione —</option>
+                      {eventsAllPlayers.filter(p => p.teamId === newEvtTeam).map(p => (
+                        <option key={p.id} value={p.id}>{p.jersey_number ? `${p.jersey_number} - ` : ''}{p.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs text-slate-400 mb-1 block">Minuto</label>
+                    <input type="number" value={newEvtMinute} onChange={ev => setNewEvtMinute(ev.target.value)}
+                      placeholder="0" className="w-full bg-navy-700 border border-navy-600 rounded px-2 py-1.5 text-sm text-white placeholder:text-slate-500" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-400 mb-1 block">Tempo</label>
+                    <select value={newEvtHalf} onChange={ev => setNewEvtHalf(Number(ev.target.value))}
+                      className="w-full bg-navy-700 border border-navy-600 rounded px-2 py-1.5 text-sm text-white">
+                      <option value={1}>1º Tempo</option>
+                      <option value={2}>2º Tempo</option>
+                    </select>
+                  </div>
+                </div>
+                <Button size="sm" className="w-full" onClick={handleAddNewEvent} disabled={!newEvtMinute}>
+                  Adicionar Evento
+                </Button>
+              </div>
+            ) : (
+              <Button variant="outline" size="sm" className="w-full border-gold-500/30 text-gold-400 hover:bg-gold-500/10"
+                onClick={() => { setAddingEvent(true); setNewEvtTeam(eventsMatch?.home_team_id) }}>
+                + Adicionar Evento
+              </Button>
+            )}
           </div>
         </DialogContent>
       </Dialog>
