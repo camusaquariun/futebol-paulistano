@@ -3,25 +3,24 @@ import { useAuth } from '@/hooks/useAuth'
 import { AdminChampionshipProvider } from '@/hooks/useAdminChampionship'
 import { AdminChampionshipSelector } from '@/components/AdminChampionshipSelector'
 import {
-  LayoutDashboard, Trophy, Users, UserCircle, Calendar, ShieldAlert, Upload, LogOut, ChevronLeft, BarChart3, MapPin, Swords, Gavel, UserCheck, Ticket,
+  LayoutDashboard, Trophy, Users, UserCircle, Calendar, ShieldAlert, LogOut, ChevronLeft, BarChart3, MapPin, Swords, Gavel, UserCheck, Ticket,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 
 const sidebarItems = [
   { path: '/admin', label: 'Dashboard', icon: LayoutDashboard },
+  { path: '/admin/amistosos', label: 'Amistosos', icon: Swords },
+  { path: '/admin/arbitragem', label: 'Arbitragem', icon: Gavel },
+  { path: '/admin/bolao', label: 'Bolão', icon: Ticket },
   { path: '/admin/campeonatos', label: 'Campeonatos', icon: Trophy },
   { path: '/admin/classificacao', label: 'Classificação', icon: BarChart3 },
-  { path: '/admin/times', label: 'Times', icon: Users },
   { path: '/admin/jogadores', label: 'Jogadores', icon: UserCircle },
   { path: '/admin/partidas', label: 'Partidas', icon: Calendar },
-  { path: '/admin/suspensoes', label: 'Suspensões', icon: ShieldAlert },
-  { path: '/admin/importar', label: 'Importar CSV', icon: Upload },
   { path: '/admin/prancheta', label: 'Prancheta Tática', icon: MapPin },
-  { path: '/admin/arbitragem', label: 'Arbitragem', icon: Gavel },
-  { path: '/admin/usuarios', label: 'Usuarios', icon: UserCheck },
-  { path: '/admin/amistosos', label: 'Amistosos', icon: Swords },
-  { path: '/admin/bolao', label: 'Bolão', icon: Ticket },
+  { path: '/admin/suspensoes', label: 'Suspensões', icon: ShieldAlert },
+  { path: '/admin/times', label: 'Times', icon: Users },
+  { path: '/admin/usuarios', label: 'Usuários', icon: UserCheck },
 ]
 
 export function AdminLayout() {

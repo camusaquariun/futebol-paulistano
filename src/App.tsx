@@ -35,6 +35,7 @@ import PoolLeaderboard from '@/pages/public/PoolLeaderboard'
 import RefereeDashboard from '@/pages/public/RefereeDashboard'
 import RefereeLive from '@/pages/public/RefereeLive'
 import PlayerProfile from '@/pages/admin/PlayerProfile'
+import MyProfile from '@/pages/public/MyProfile'
 
 export default function App() {
   return (
@@ -58,6 +59,7 @@ export default function App() {
         <Route path="/meu-time/jogo/:matchId" element={<PostGame />} />
         <Route path="/meu-time/preparo/:matchId" element={<PreGameRoom />} />
         <Route path="/meu-time/prancheta" element={<TacticalBoardPage />} />
+        <Route path="/meu-perfil" element={<MyProfile />} />
       </Route>
       <Route path="/login" element={<Login />} />
       <Route path="/admin" element={<AdminLayout />}>

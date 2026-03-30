@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, Outlet, useLocation } from 'react-router-dom'
-import { Trophy, BarChart3, Calendar, Target, ShieldAlert, LogIn, Users, Swords, Ticket, Gavel, Sun, Moon, Menu, X } from 'lucide-react'
+import { Trophy, BarChart3, Calendar, Target, ShieldAlert, LogIn, Users, Swords, Ticket, Gavel, Sun, Moon, Menu, X, UserCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/useAuth'
 import { useTheme } from '@/hooks/useTheme'
@@ -64,6 +64,20 @@ export function PublicLayout() {
               >
                 {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
               </button>
+              {user && (
+                <Link
+                  to="/meu-perfil"
+                  className={cn(
+                    'ml-1 flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
+                    location.pathname === '/meu-perfil'
+                      ? 'bg-pitch-600/20 text-pitch-400'
+                      : 'text-slate-400 hover:text-white hover:bg-navy-800'
+                  )}
+                >
+                  <UserCircle className="h-4 w-4" />
+                  <span>Perfil</span>
+                </Link>
+              )}
               <Link
                 to={user && isAdmin ? '/admin' : '/login'}
                 className={cn(
@@ -118,6 +132,21 @@ export function PublicLayout() {
                   {label}
                 </Link>
               ))}
+              {user && (
+                <Link
+                  to="/meu-perfil"
+                  onClick={() => setMenuOpen(false)}
+                  className={cn(
+                    'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+                    location.pathname === '/meu-perfil'
+                      ? 'bg-pitch-600/20 text-pitch-400'
+                      : 'text-slate-400 hover:text-white hover:bg-navy-800'
+                  )}
+                >
+                  <UserCircle className="h-4 w-4" />
+                  Meu Perfil
+                </Link>
+              )}
               <Link
                 to={user && isAdmin ? '/admin' : '/login'}
                 onClick={() => setMenuOpen(false)}
