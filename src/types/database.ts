@@ -93,6 +93,10 @@ export interface Match {
   motm_player_id: string | null
   home_fouls: number
   away_fouls: number
+  home_fouls_1h: number | null
+  away_fouls_1h: number | null
+  home_fouls_2h: number | null
+  away_fouls_2h: number | null
   round: number
   match_state: 'pre_match' | 'first_half' | 'halftime' | 'second_half' | 'finished'
   half_start_time: string | null
