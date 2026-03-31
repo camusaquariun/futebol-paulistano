@@ -127,6 +127,8 @@ export default function MatchesAdmin() {
   const [qfNewMinute, setQfNewMinute] = useState('')
   const [qfNewHalf, setQfNewHalf] = useState(1)
   const [qfSaving, setQfSaving] = useState(false)
+  const [qfPresentPlayers, setQfPresentPlayers] = useState<Set<string>>(new Set())
+  const [qfRosterLoaded, setQfRosterLoaded] = useState(false)
 
   const { data: qfHomeRoster } = useTeamRoster(qfMatch?.home_team_id, qfMatch?.category_id)
   const { data: qfAwayRoster } = useTeamRoster(qfMatch?.away_team_id, qfMatch?.category_id)
@@ -136,6 +138,23 @@ export default function MatchesAdmin() {
     const away = qfAwayRoster?.map(pt => ({ ...pt.player!, jersey_number: pt.jersey_number, teamId: qfMatch?.away_team_id })) ?? []
     return [...home, ...away]
   }, [qfHomeRoster, qfAwayRoster, qfMatch])
+
+  // Auto-initialize all players as present when roster loads
+  useEffect(() => {
+    if (qfOpen && !qfRosterLoaded && qfAllPlayers.length > 0) {
+      setQfPresentPlayers(new Set(qfAllPlayers.map(p => p.id)))
+      setQfRosterLoaded(true)
+    }
+  }, [qfOpen, qfRosterLoaded, qfAllPlayers])
+
+  const toggleQfPresent = (playerId: string) => {
+    setQfPresentPlayers(prev => {
+      const next = new Set(prev)
+      if (next.has(playerId)) next.delete(playerId)
+      else next.add(playerId)
+      return next
+    })
+  }
 
   const eventsAllPlayers = useMemo(() => {
     const home = eventsHomeRoster?.map(pt => ({ ...pt.player!, jersey_number: pt.jersey_number, teamId: eventsMatch?.home_team_id })) ?? []
@@ -421,6 +440,8 @@ export default function MatchesAdmin() {
     setQfNewPlayer('')
     setQfNewMinute('')
     setQfNewHalf(1)
+    setQfPresentPlayers(new Set())
+    setQfRosterLoaded(false)
     setQfOpen(true)
   }
 
@@ -475,6 +496,17 @@ export default function MatchesAdmin() {
           half: e.half,
         }))
       )
+    }
+
+    // Save attendance
+    await supabase.from('match_attendance').delete().eq('match_id', qfMatch.id)
+    if (qfPresentPlayers.size > 0) {
+      const attendanceRows = qfAllPlayers
+        .filter(p => qfPresentPlayers.has(p.id))
+        .map(p => ({ match_id: qfMatch.id, player_id: p.id, team_id: p.teamId, present: true }))
+      if (attendanceRows.length > 0) {
+        await supabase.from('match_attendance').insert(attendanceRows)
+      }
     }
 
     queryClient.invalidateQueries({ queryKey: ['matches'] })
@@ -894,6 +926,74 @@ export default function MatchesAdmin() {
                 </div>
               </div>
             </div>
+
+            {/* Player attendance */}
+            {qfAllPlayers.length > 0 && (
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <Label className="text-slate-400 text-xs">Presença ({qfPresentPlayers.size}/{qfAllPlayers.length})</Label>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setQfPresentPlayers(new Set(qfAllPlayers.map(p => p.id)))}
+                      className="text-[10px] text-pitch-400 hover:text-pitch-300"
+                    >
+                      Todos
+                    </button>
+                    <span className="text-slate-600 text-[10px]">·</span>
+                    <button
+                      type="button"
+                      onClick={() => setQfPresentPlayers(new Set())}
+                      className="text-[10px] text-slate-400 hover:text-slate-300"
+                    >
+                      Nenhum
+                    </button>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <p className="text-[10px] text-slate-500 font-medium mb-1">{qfMatch?.home_team?.name}</p>
+                    {(qfHomeRoster ?? []).map(pt => {
+                      const p = pt.player!
+                      return (
+                        <label key={p.id} className="flex items-center gap-2 cursor-pointer group">
+                          <input
+                            type="checkbox"
+                            checked={qfPresentPlayers.has(p.id)}
+                            onChange={() => toggleQfPresent(p.id)}
+                            className="accent-green-500"
+                          />
+                          <span className={`text-xs truncate ${qfPresentPlayers.has(p.id) ? 'text-white' : 'text-slate-500 line-through'}`}>
+                            {pt.jersey_number != null && <span className="text-slate-500 mr-1">#{pt.jersey_number}</span>}
+                            {p.name}
+                          </span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[10px] text-slate-500 font-medium mb-1">{qfMatch?.away_team?.name}</p>
+                    {(qfAwayRoster ?? []).map(pt => {
+                      const p = pt.player!
+                      return (
+                        <label key={p.id} className="flex items-center gap-2 cursor-pointer group">
+                          <input
+                            type="checkbox"
+                            checked={qfPresentPlayers.has(p.id)}
+                            onChange={() => toggleQfPresent(p.id)}
+                            className="accent-green-500"
+                          />
+                          <span className={`text-xs truncate ${qfPresentPlayers.has(p.id) ? 'text-white' : 'text-slate-500 line-through'}`}>
+                            {pt.jersey_number != null && <span className="text-slate-500 mr-1">#{pt.jersey_number}</span>}
+                            {p.name}
+                          </span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Events list */}
             <div>
