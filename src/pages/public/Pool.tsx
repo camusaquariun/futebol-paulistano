@@ -13,14 +13,13 @@ import {
   useMyPoolSeasonBets,
   useSavePoolSeasonBet,
 } from '@/hooks/useSupabase'
-import { canBetOnMatch, betDeadlineLabel, calculateMatchPoints } from '@/lib/pool-points'
+import { canBetOnMatch, betDeadlineLabel, calculateMatchPoints, buildLeaderboard, POINT_TIER_LABELS } from '@/lib/pool-points'
 import { phaseLabel } from '@/lib/utils'
 import type { Category, Championship, Match, PoolSeasonBetType } from '@/types/database'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Trophy, Clock, Check, Lock, BarChart3, Film, ChevronDown, ChevronUp, LogIn, Star, Target, TrendingUp } from 'lucide-react'
-import { buildLeaderboard, calculateMatchPoints, POINT_TIER_LABELS } from '@/lib/pool-points'
 import { usePoolMatchBets, usePoolSeasonBets } from '@/hooks/useSupabase'
 
 type TabId = 'apostas' | 'cinema'
