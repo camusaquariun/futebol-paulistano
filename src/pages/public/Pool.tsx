@@ -54,6 +54,8 @@ function CinemaCategorySection({
 
   const betTypes: { type: PoolSeasonBetType; label: string; points: number; needsTeam: boolean; needsPlayer: boolean }[] = [
     { type: 'champion_cinema', label: '🎬 Campeão Cinema', points: 50, needsTeam: true, needsPlayer: false },
+    { type: 'runner_up_cinema', label: '🎬 2º Colocado Cinema', points: 20, needsTeam: true, needsPlayer: false },
+    { type: 'third_place_cinema', label: '🎬 3º Colocado Cinema', points: 10, needsTeam: true, needsPlayer: false },
     { type: 'relegated_cinema', label: '🎬 Último Colocado Cinema', points: 50, needsTeam: true, needsPlayer: false },
     { type: 'champion', label: 'Campeão', points: 25, needsTeam: true, needsPlayer: false },
     { type: 'runner_up', label: 'Vice-campeão', points: 10, needsTeam: true, needsPlayer: false },

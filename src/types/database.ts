@@ -167,7 +167,7 @@ export interface TopScorer {
 }
 
 // Bolão (Betting Pool)
-export type PoolSeasonBetType = 'champion' | 'runner_up' | 'third_place' | 'top_scorer' | 'champion_cinema' | 'relegated_cinema'
+export type PoolSeasonBetType = 'champion' | 'runner_up' | 'third_place' | 'top_scorer' | 'champion_cinema' | 'runner_up_cinema' | 'third_place_cinema' | 'relegated_cinema'
 
 export interface PoolMatchBet {
   id: string
