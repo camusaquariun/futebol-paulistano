@@ -13,7 +13,7 @@ import {
   useMyPoolSeasonBets,
   useSavePoolSeasonBet,
 } from '@/hooks/useSupabase'
-import { canBetOnMatch, betDeadlineLabel } from '@/lib/pool-points'
+import { canBetOnMatch, betDeadlineLabel, calculateMatchPoints } from '@/lib/pool-points'
 import { phaseLabel } from '@/lib/utils'
 import type { Category, Championship, Match, PoolSeasonBetType } from '@/types/database'
 import { Card, CardContent } from '@/components/ui/card'
@@ -208,11 +208,19 @@ export default function Pool() {
 
   const myBetMap = useMemo(() => {
     const map = new Map<string, { id: string; home_score: number; away_score: number; points: number | null }>()
+    const matchLookup = new Map((allMatches ?? []).map(m => [m.id, m]))
     for (const b of myBets ?? []) {
-      map.set(b.match_id, { id: b.id, home_score: b.home_score, away_score: b.away_score, points: b.points })
+      let points = b.points
+      if (points == null) {
+        const match = matchLookup.get(b.match_id)
+        if (match?.status === 'finished' && match.home_score != null && match.away_score != null) {
+          points = calculateMatchPoints(b.home_score, b.away_score, match.home_score, match.away_score)
+        }
+      }
+      map.set(b.match_id, { id: b.id, home_score: b.home_score, away_score: b.away_score, points })
     }
     return map
-  }, [myBets])
+  }, [myBets, allMatches])
 
   // My stats
   const myStats = useMemo(() => {
@@ -367,7 +375,7 @@ export default function Pool() {
       )}
 
       {/* My stats dashboard */}
-      {user && myStats.finishedBets > 0 && (
+      {user && myStats.totalBets > 0 && (
         <Card className="bg-gradient-to-r from-pitch-900/40 via-navy-900 to-navy-900 border-pitch-600/20">
           <CardContent className="p-4 space-y-3">
             <div className="flex items-center justify-between">
