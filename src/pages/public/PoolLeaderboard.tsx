@@ -5,8 +5,9 @@ import {
   useActiveChampionship,
   usePoolMatchBets,
   usePoolSeasonBets,
+  useMatches,
 } from '@/hooks/useSupabase'
-import { buildLeaderboard, POINT_TIER_LABELS, TIEBREAKER_ORDER } from '@/lib/pool-points'
+import { buildLeaderboard, calculateMatchPoints, POINT_TIER_LABELS, TIEBREAKER_ORDER } from '@/lib/pool-points'
 import { Card, CardContent } from '@/components/ui/card'
 import { ArrowLeft, Trophy, Medal, Crown } from 'lucide-react'
 
@@ -15,10 +16,20 @@ export default function PoolLeaderboard() {
   const { data: championship } = useActiveChampionship()
   const { data: matchBets } = usePoolMatchBets(championship?.id)
   const { data: seasonBets } = usePoolSeasonBets(championship?.id)
+  const { data: allMatches } = useMatches(championship?.id)
 
   const leaderboard = useMemo(() => {
-    return buildLeaderboard(matchBets ?? [], seasonBets ?? [])
-  }, [matchBets, seasonBets])
+    const matchLookup = new Map((allMatches ?? []).map(m => [m.id, m]))
+    const betsWithPoints = (matchBets ?? []).map(b => {
+      if (b.points != null) return b
+      const match = matchLookup.get(b.match_id)
+      if (match?.status === 'finished' && match.home_score != null && match.away_score != null) {
+        return { ...b, points: calculateMatchPoints(b.home_score, b.away_score, match.home_score, match.away_score) }
+      }
+      return b
+    })
+    return buildLeaderboard(betsWithPoints, seasonBets ?? [])
+  }, [matchBets, seasonBets, allMatches])
 
   const myRank = leaderboard.findIndex(e => e.userId === user?.id)
 
