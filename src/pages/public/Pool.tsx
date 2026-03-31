@@ -8,14 +8,14 @@ import {
   useChampionshipCategories,
   useMyPoolBets,
   useSavePoolMatchBet,
-  useTeams,
+  useTeamsByCategory,
   usePlayersByChampionship,
   useMyPoolSeasonBets,
   useSavePoolSeasonBet,
 } from '@/hooks/useSupabase'
 import { canBetOnMatch, betDeadlineLabel } from '@/lib/pool-points'
 import { phaseLabel } from '@/lib/utils'
-import type { Match, PoolSeasonBetType } from '@/types/database'
+import type { Category, Championship, Match, PoolSeasonBetType } from '@/types/database'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -25,6 +25,123 @@ import { usePoolMatchBets, usePoolSeasonBets } from '@/hooks/useSupabase'
 
 type TabId = 'apostas' | 'cinema'
 
+interface CinemaCategorySectionProps {
+  category: Category
+  championship: Championship
+  cinemaBets: Record<string, string>
+  setCinemaBets: React.Dispatch<React.SetStateAction<Record<string, string>>>
+  savingCinema: string | null
+  setSavingCinema: React.Dispatch<React.SetStateAction<string | null>>
+  mySeasonBetMap: Map<string, any>
+  handleSaveCinemaBet: (categoryId: string, betType: PoolSeasonBetType, teamId?: string, playerId?: string) => void
+  players: any[]
+}
+
+function CinemaCategorySection({
+  category,
+  championship,
+  cinemaBets,
+  setCinemaBets,
+  savingCinema,
+  mySeasonBetMap,
+  handleSaveCinemaBet,
+  players,
+}: CinemaCategorySectionProps) {
+  const { data: catTeams } = useTeamsByCategory(championship.id, category.id)
+
+  const catPlayers = players.filter((p: any) =>
+    p.links?.some((l: any) => l.category_id === category.id)
+  )
+
+  const betTypes: { type: PoolSeasonBetType; label: string; points: number; needsTeam: boolean; needsPlayer: boolean }[] = [
+    { type: 'champion_cinema', label: '🎬 Campeão Cinema', points: 50, needsTeam: true, needsPlayer: false },
+    { type: 'relegated_cinema', label: '🎬 Último Colocado Cinema', points: 50, needsTeam: true, needsPlayer: false },
+    { type: 'champion', label: 'Campeão', points: 25, needsTeam: true, needsPlayer: false },
+    { type: 'runner_up', label: 'Vice-campeão', points: 10, needsTeam: true, needsPlayer: false },
+    { type: 'third_place', label: '3º Lugar', points: 5, needsTeam: true, needsPlayer: false },
+    { type: 'top_scorer', label: 'Artilheiro', points: 15, needsTeam: false, needsPlayer: true },
+  ]
+
+  return (
+    <Card className="bg-navy-900 border-navy-700">
+      <CardContent className="p-4">
+        <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
+          <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30">
+            {category.name}
+          </Badge>
+        </h3>
+        <div className="space-y-3">
+          {betTypes.map(bt => {
+            const key = `${category.id}_${bt.type}`
+            const existing = mySeasonBetMap.get(key)
+            const localValue = cinemaBets[key]
+            const isSaving = savingCinema === key
+
+            return (
+              <div key={bt.type} className="flex flex-col sm:flex-row sm:items-center gap-2 p-3 rounded-lg bg-slate-800/30 border border-slate-700/30">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-white">{bt.label}</span>
+                    <Badge className="bg-gold-500/20 text-gold-400 border-gold-500/30 text-[10px]">
+                      {bt.points} pts
+                    </Badge>
+                  </div>
+                  {existing && !localValue && (
+                    <p className="text-[10px] text-pitch-400 mt-0.5">
+                      Aposta: {bt.needsTeam && existing.team ? existing.team.name : ''}{bt.needsPlayer && existing.player ? existing.player.name : ''}
+                    </p>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  {bt.needsTeam && (
+                    <select
+                      value={localValue ?? existing?.team_id ?? ''}
+                      onChange={e => setCinemaBets(prev => ({ ...prev, [key]: e.target.value }))}
+                      className="bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-pitch-500 max-w-[180px]"
+                    >
+                      <option value="">Selecionar time...</option>
+                      {(catTeams ?? []).map(t => (
+                        <option key={t.id} value={t.id}>{t.name}</option>
+                      ))}
+                    </select>
+                  )}
+                  {bt.needsPlayer && (
+                    <select
+                      value={localValue ?? existing?.player_id ?? ''}
+                      onChange={e => setCinemaBets(prev => ({ ...prev, [key]: e.target.value }))}
+                      className="bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-pitch-500 max-w-[180px]"
+                    >
+                      <option value="">Selecionar jogador...</option>
+                      {catPlayers.map((p: any) => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                  )}
+                  {localValue && localValue !== (existing?.team_id ?? existing?.player_id ?? '') && (
+                    <Button
+                      onClick={() => handleSaveCinemaBet(
+                        category.id,
+                        bt.type,
+                        bt.needsTeam ? localValue : undefined,
+                        bt.needsPlayer ? localValue : undefined,
+                      )}
+                      disabled={isSaving}
+                      className="h-8 px-3 bg-pitch-600 hover:bg-pitch-700 text-xs"
+                    >
+                      <Check className="h-3 w-3 mr-1" />
+                      Salvar
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 export default function Pool() {
   const { user } = useAuth()
   const { data: championship } = useActiveChampionship()
@@ -32,7 +149,6 @@ export default function Pool() {
   const { data: champCategories } = useChampionshipCategories(championship?.id)
   const { data: allMatches } = useMatches(championship?.id)
   const { data: myBets } = useMyPoolBets(user?.id, championship?.id)
-  const { data: teams } = useTeams(championship?.id)
   const { data: players } = usePlayersByChampionship(championship?.id)
   const { data: mySeasonBets } = useMyPoolSeasonBets(user?.id, championship?.id)
   const saveBet = useSavePoolMatchBet()
@@ -598,95 +714,19 @@ export default function Pool() {
           {user && champCategories && (categories ?? []).map(category => {
             const hasCat = champCategories.some((cc: any) => cc.category_id === category.id)
             if (!hasCat) return null
-            const catTeams = teams ?? []
-            const catPlayers = players ?? []
-
-            const betTypes: { type: PoolSeasonBetType; label: string; points: number; needsTeam: boolean; needsPlayer: boolean }[] = [
-              { type: 'champion_cinema', label: '🎬 Campeão Cinema', points: 50, needsTeam: true, needsPlayer: false },
-              { type: 'relegated_cinema', label: '🎬 Último Colocado Cinema', points: 50, needsTeam: true, needsPlayer: false },
-              { type: 'champion', label: 'Campeão', points: 25, needsTeam: true, needsPlayer: false },
-              { type: 'runner_up', label: 'Vice-campeão', points: 10, needsTeam: true, needsPlayer: false },
-              { type: 'third_place', label: '3º Lugar', points: 5, needsTeam: true, needsPlayer: false },
-              { type: 'top_scorer', label: 'Artilheiro', points: 15, needsTeam: false, needsPlayer: true },
-            ]
-
             return (
-              <Card key={category.id} className="bg-navy-900 border-navy-700">
-                <CardContent className="p-4">
-                  <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
-                    <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30">
-                      {category.name}
-                    </Badge>
-                  </h3>
-                  <div className="space-y-3">
-                    {betTypes.map(bt => {
-                      const key = `${category.id}_${bt.type}`
-                      const existing = mySeasonBetMap.get(key)
-                      const localValue = cinemaBets[key]
-                      const isSaving = savingCinema === key
-
-                      return (
-                        <div key={bt.type} className="flex flex-col sm:flex-row sm:items-center gap-2 p-3 rounded-lg bg-slate-800/30 border border-slate-700/30">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm font-medium text-white">{bt.label}</span>
-                              <Badge className="bg-gold-500/20 text-gold-400 border-gold-500/30 text-[10px]">
-                                {bt.points} pts
-                              </Badge>
-                            </div>
-                            {existing && !localValue && (
-                              <p className="text-[10px] text-pitch-400 mt-0.5">
-                                Aposta: {bt.needsTeam && existing.team ? existing.team.name : ''}{bt.needsPlayer && existing.player ? existing.player.name : ''}
-                              </p>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {bt.needsTeam && (
-                              <select
-                                value={localValue ?? existing?.team_id ?? ''}
-                                onChange={e => setCinemaBets(prev => ({ ...prev, [key]: e.target.value }))}
-                                className="bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-pitch-500 max-w-[180px]"
-                              >
-                                <option value="">Selecionar time...</option>
-                                {catTeams.map(t => (
-                                  <option key={t.id} value={t.id}>{t.name}</option>
-                                ))}
-                              </select>
-                            )}
-                            {bt.needsPlayer && (
-                              <select
-                                value={localValue ?? existing?.player_id ?? ''}
-                                onChange={e => setCinemaBets(prev => ({ ...prev, [key]: e.target.value }))}
-                                className="bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-pitch-500 max-w-[180px]"
-                              >
-                                <option value="">Selecionar jogador...</option>
-                                {catPlayers.map(p => (
-                                  <option key={p.id} value={p.id}>{p.name}</option>
-                                ))}
-                              </select>
-                            )}
-                            {localValue && localValue !== (existing?.team_id ?? existing?.player_id ?? '') && (
-                              <Button
-                                onClick={() => handleSaveCinemaBet(
-                                  category.id,
-                                  bt.type,
-                                  bt.needsTeam ? localValue : undefined,
-                                  bt.needsPlayer ? localValue : undefined,
-                                )}
-                                disabled={isSaving}
-                                className="h-8 px-3 bg-pitch-600 hover:bg-pitch-700 text-xs"
-                              >
-                                <Check className="h-3 w-3 mr-1" />
-                                Salvar
-                              </Button>
-                            )}
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </CardContent>
-              </Card>
+              <CinemaCategorySection
+                key={category.id}
+                category={category}
+                championship={championship}
+                cinemaBets={cinemaBets}
+                setCinemaBets={setCinemaBets}
+                savingCinema={savingCinema}
+                setSavingCinema={setSavingCinema}
+                mySeasonBetMap={mySeasonBetMap}
+                handleSaveCinemaBet={handleSaveCinemaBet}
+                players={players ?? []}
+              />
             )
           })}
         </div>
