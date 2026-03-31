@@ -178,7 +178,7 @@ export default function MatchesAdmin() {
   }
 
   const handleSave = async () => {
-    if (!championshipId) return
+    if (!championshipId || !matchDate) return
     await saveMutation.mutateAsync({
       championship_id: championshipId,
       category_id: categoryId,
@@ -817,7 +817,7 @@ export default function MatchesAdmin() {
                 </div>
               )}
             </div>
-            <Button onClick={handleSave} className="w-full" disabled={saveMutation.isPending || !homeTeamId || !awayTeamId}>
+            <Button onClick={handleSave} className="w-full" disabled={saveMutation.isPending || !homeTeamId || !awayTeamId || !matchDate}>
               {saveMutation.isPending ? 'Salvando...' : 'Criar Partida'}
             </Button>
           </div>
