@@ -223,14 +223,14 @@ export default function Pool() {
 
   // My stats
   const myStats = useMemo(() => {
-    const bets = myBets ?? []
-    const finished = bets.filter(b => b.points != null)
+    const entries = Array.from(myBetMap.values())
+    const finished = entries.filter(b => b.points != null)
     const totalPoints = finished.reduce((s, b) => s + (b.points ?? 0), 0)
     const exactScores = finished.filter(b => b.points === 15).length
     const correctWinner = finished.filter(b => (b.points ?? 0) >= 5).length
     const noPoints = finished.filter(b => b.points === 0).length
-    return { totalBets: bets.length, finishedBets: finished.length, totalPoints, exactScores, correctWinner, noPoints }
-  }, [myBets])
+    return { totalBets: myBetMap.size, finishedBets: finished.length, totalPoints, exactScores, correctWinner, noPoints }
+  }, [myBetMap])
 
   // My rank in leaderboard
   const leaderboard = useMemo(() => buildLeaderboard(allMatchBets ?? [], allSeasonBets ?? []), [allMatchBets, allSeasonBets])
