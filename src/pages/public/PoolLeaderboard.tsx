@@ -45,26 +45,40 @@ export default function PoolLeaderboard() {
       </div>
 
       {/* My position card */}
-      {user && myRank >= 0 && (
-        <Card className="bg-gradient-to-r from-pitch-600/10 to-navy-800 border-pitch-600/30">
-          <CardContent className="p-4 flex items-center gap-4">
-            <div className="h-12 w-12 rounded-full bg-pitch-600/20 flex items-center justify-center">
-              <span className="text-lg font-bold text-pitch-400">#{myRank + 1}</span>
-            </div>
-            <div>
-              <p className="text-xs text-pitch-400 uppercase tracking-wider font-semibold">
-                Sua posição
-              </p>
-              <p className="text-lg font-bold text-white">
-                {leaderboard[myRank].totalPoints} pontos
-              </p>
-              <p className="text-[10px] text-slate-400">
-                {leaderboard[myRank].totalBets} apostas computadas
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      {user && myRank >= 0 && (() => {
+        const me = leaderboard[myRank]
+        const rank = myRank + 1
+        return (
+          <Card className="bg-gradient-to-r from-pitch-600/10 to-navy-800 border-pitch-600/30">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-4">
+                <div className="h-14 w-14 rounded-full bg-pitch-600/20 border-2 border-pitch-500/40 flex items-center justify-center flex-shrink-0">
+                  <span className="text-xl font-bold text-pitch-400">#{rank}</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-pitch-400 uppercase tracking-wider font-semibold mb-0.5">Sua posição</p>
+                  <p className="text-xl font-bold text-white">{me.totalPoints} pontos</p>
+                  <div className="flex flex-wrap gap-3 mt-1 text-[10px] text-slate-400">
+                    <span>{me.totalBets} apostas</span>
+                    <span>·</span>
+                    <span className="text-amber-400">{me.tierCounts[15] || 0} placar exato</span>
+                    <span>·</span>
+                    <span className="text-pitch-400">{(me.tierCounts[10] || 0) + (me.tierCounts[8] || 0) + (me.tierCounts[6] || 0) + (me.tierCounts[5] || 0)} vencedores</span>
+                  </div>
+                </div>
+                {myRank > 4 && (
+                  <button
+                    onClick={() => document.getElementById('my-row')?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+                    className="flex-shrink-0 text-xs text-pitch-400 hover:text-pitch-300 border border-pitch-500/30 px-2 py-1 rounded-lg"
+                  >
+                    Ver minha posição ↓
+                  </button>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )
+      })()}
 
       {/* Leaderboard table */}
       <Card className="bg-navy-900 border-navy-700">
@@ -106,9 +120,12 @@ export default function PoolLeaderboard() {
                     return (
                       <tr
                         key={entry.userId}
+                        id={isMe ? 'my-row' : undefined}
                         className={`border-b border-navy-800/50 ${
-                          isMe ? 'bg-pitch-600/5' : ''
-                        } ${rank <= 3 ? 'bg-amber-500/[0.02]' : ''}`}
+                          isMe
+                            ? 'bg-pitch-600/10 ring-1 ring-inset ring-pitch-500/30'
+                            : rank <= 3 ? 'bg-amber-500/[0.02]' : ''
+                        }`}
                       >
                         <td className="py-3 px-4">
                           <div className="flex items-center gap-1">
@@ -123,12 +140,16 @@ export default function PoolLeaderboard() {
                           </div>
                         </td>
                         <td className="py-3 px-4">
-                          <span className={`font-medium truncate max-w-[200px] block ${isMe ? 'text-pitch-400' : 'text-white'}`}>
-                            {entry.email.split('@')[0]}
-                          </span>
-                          {isMe && (
-                            <span className="text-[10px] text-pitch-400">Você</span>
-                          )}
+                          <div className="flex items-center gap-2">
+                            <span className={`font-medium truncate max-w-[160px] block ${isMe ? 'text-pitch-400 font-bold' : 'text-white'}`}>
+                              {entry.email.split('@')[0]}
+                            </span>
+                            {isMe && (
+                              <span className="flex-shrink-0 text-[9px] font-bold bg-pitch-600/30 text-pitch-400 border border-pitch-500/40 px-1.5 py-0.5 rounded-full">
+                                VOCÊ
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="py-3 px-4 text-center">
                           <span className={`font-bold text-base ${

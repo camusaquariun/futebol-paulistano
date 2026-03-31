@@ -19,7 +19,9 @@ import type { Match, PoolSeasonBetType } from '@/types/database'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Trophy, Clock, Check, Lock, BarChart3, Film, ChevronDown, ChevronUp, LogIn } from 'lucide-react'
+import { Trophy, Clock, Check, Lock, BarChart3, Film, ChevronDown, ChevronUp, LogIn, Star, Target, TrendingUp } from 'lucide-react'
+import { buildLeaderboard, calculateMatchPoints, POINT_TIER_LABELS } from '@/lib/pool-points'
+import { usePoolMatchBets, usePoolSeasonBets } from '@/hooks/useSupabase'
 
 type TabId = 'apostas' | 'cinema'
 
@@ -35,6 +37,8 @@ export default function Pool() {
   const { data: mySeasonBets } = useMyPoolSeasonBets(user?.id, championship?.id)
   const saveBet = useSavePoolMatchBet()
   const saveSeasonBet = useSavePoolSeasonBet()
+  const { data: allMatchBets } = usePoolMatchBets(championship?.id)
+  const { data: allSeasonBets } = usePoolSeasonBets(championship?.id)
 
   const [tab, setTab] = useState<TabId>('apostas')
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
@@ -93,6 +97,34 @@ export default function Pool() {
     }
     return map
   }, [myBets])
+
+  // My stats
+  const myStats = useMemo(() => {
+    const bets = myBets ?? []
+    const finished = bets.filter(b => b.points != null)
+    const totalPoints = finished.reduce((s, b) => s + (b.points ?? 0), 0)
+    const exactScores = finished.filter(b => b.points === 15).length
+    const correctWinner = finished.filter(b => (b.points ?? 0) >= 5).length
+    const noPoints = finished.filter(b => b.points === 0).length
+    return { totalBets: bets.length, finishedBets: finished.length, totalPoints, exactScores, correctWinner, noPoints }
+  }, [myBets])
+
+  // My rank in leaderboard
+  const leaderboard = useMemo(() => buildLeaderboard(allMatchBets ?? [], allSeasonBets ?? []), [allMatchBets, allSeasonBets])
+  const myRank = user ? leaderboard.findIndex(e => e.userId === user.id) : -1
+
+  // Bet result label for a finished match
+  const getBetResultLabel = (points: number | null | undefined): { label: string; color: string } | null => {
+    if (points == null) return null
+    if (points === 0) return { label: 'Sem pontos', color: 'text-red-400' }
+    if (points === 15) return { label: '⭐ Placar Exato', color: 'text-amber-400' }
+    if (points === 10) return { label: '✓ Venc. + Gols Venc.', color: 'text-pitch-400' }
+    if (points === 8) return { label: '✓ Venc. + Gols Perd.', color: 'text-pitch-400' }
+    if (points === 6) return { label: '✓ Venc. + Saldo', color: 'text-pitch-400' }
+    if (points === 5) return { label: '✓ Vencedor', color: 'text-blue-400' }
+    if (points === 2) return { label: '~ Gols de 1 time', color: 'text-slate-400' }
+    return { label: `${points} pts`, color: 'text-slate-400' }
+  }
 
   const handleEditBet = (matchId: string, side: 'home' | 'away', value: string) => {
     if (value !== '' && !/^\d{1,2}$/.test(value)) return
@@ -214,6 +246,49 @@ export default function Pool() {
             <p className="text-sm text-amber-300">
               <Link to="/login" className="font-semibold underline hover:text-amber-200">Faça login</Link> para participar do bolão
             </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* My stats dashboard */}
+      {user && myStats.finishedBets > 0 && (
+        <Card className="bg-gradient-to-r from-pitch-900/40 via-navy-900 to-navy-900 border-pitch-600/20">
+          <CardContent className="p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold text-pitch-400 uppercase tracking-wider">Seu desempenho</p>
+              {myRank >= 0 && (
+                <span className="text-xs text-slate-400">
+                  <span className="font-bold text-white text-sm">#{myRank + 1}</span> na classificação
+                </span>
+              )}
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="bg-navy-800/60 rounded-lg p-3 text-center">
+                <div className="text-2xl font-extrabold text-pitch-400">{myStats.totalPoints}</div>
+                <div className="text-[10px] text-slate-400 mt-0.5 uppercase tracking-wide">Pontos</div>
+              </div>
+              <div className="bg-navy-800/60 rounded-lg p-3 text-center">
+                <div className="text-2xl font-extrabold text-white">{myStats.totalBets}</div>
+                <div className="text-[10px] text-slate-400 mt-0.5 uppercase tracking-wide">Apostas</div>
+              </div>
+              <div className="bg-amber-500/10 rounded-lg p-3 text-center border border-amber-500/20">
+                <div className="text-2xl font-extrabold text-amber-400">{myStats.exactScores}</div>
+                <div className="text-[10px] text-amber-400/70 mt-0.5 uppercase tracking-wide">Placar Exato</div>
+              </div>
+              <div className="bg-pitch-600/10 rounded-lg p-3 text-center border border-pitch-500/20">
+                <div className="text-2xl font-extrabold text-pitch-400">{myStats.correctWinner}</div>
+                <div className="text-[10px] text-pitch-400/70 mt-0.5 uppercase tracking-wide">Acertou Venc.</div>
+              </div>
+            </div>
+            {myStats.finishedBets > 0 && (
+              <div className="flex items-center gap-4 text-xs text-slate-500 pt-1">
+                <span>{myStats.finishedBets} partidas finalizadas</span>
+                <span>·</span>
+                <span className="text-red-400/70">{myStats.noPoints} sem ponto</span>
+                <span>·</span>
+                <span className="text-pitch-400/70">{((myStats.correctWinner / myStats.finishedBets) * 100).toFixed(0)}% de acerto</span>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
@@ -377,13 +452,26 @@ export default function Pool() {
                                   <div className="text-lg font-bold text-white">
                                     {match.home_score} × {match.away_score}
                                   </div>
-                                  {existing && (
-                                    <div className={`text-[10px] mt-0.5 ${
-                                      existing.points != null && existing.points > 0 ? 'text-green-400' : 'text-slate-500'
-                                    }`}>
-                                      Aposta: {existing.home_score}×{existing.away_score}
-                                      {existing.points != null && ` → ${existing.points} pts`}
-                                    </div>
+                                  {existing && (() => {
+                                    const result = getBetResultLabel(existing.points)
+                                    return (
+                                      <div className="mt-1 space-y-0.5">
+                                        <div className="text-[10px] text-slate-400">
+                                          Sua aposta: <span className="font-bold text-white">{existing.home_score}×{existing.away_score}</span>
+                                        </div>
+                                        {result && (
+                                          <div className={`text-[10px] font-semibold ${result.color}`}>
+                                            {result.label}
+                                            {existing.points != null && existing.points > 0 && (
+                                              <span className="ml-1 bg-black/20 px-1 rounded">+{existing.points} pts</span>
+                                            )}
+                                          </div>
+                                        )}
+                                      </div>
+                                    )
+                                  })()}
+                                  {!existing && user && (
+                                    <div className="text-[10px] text-slate-600 mt-0.5">Sem aposta</div>
                                   )}
                                 </div>
                               )}
