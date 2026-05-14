@@ -65,17 +65,23 @@ function CinemaCategorySection({
   )
 
   const isLivre = category.name === 'Livre'
+  const isVeterano = category.name === 'Veterano'
   const betTypes: { type: PoolSeasonBetType; label: string; points: number; needsTeam: boolean; needsPlayer: boolean }[] = [
     { type: 'champion_cinema', label: '🎬 Campeão Cinema', points: 50, needsTeam: true, needsPlayer: false },
     { type: 'runner_up_cinema', label: '🎬 2º Colocado Cinema', points: 20, needsTeam: true, needsPlayer: false },
     { type: 'third_place_cinema', label: '🎬 3º Colocado Cinema', points: 10, needsTeam: true, needsPlayer: false },
-    { type: 'relegated_cinema', label: '🎬 Último Colocado Cinema', points: 50, needsTeam: true, needsPlayer: false },
-    { type: 'top_scorer_cinema', label: '🎬 Artilheiro Cinema', points: 50, needsTeam: false, needsPlayer: true },
+    { type: 'relegated_cinema', label: isVeterano ? '🎬 1º Eliminado Cinema' : '🎬 Eliminado Cinema', points: 20, needsTeam: true, needsPlayer: false },
+    { type: 'relegated_cinema_2', label: '🎬 2º Eliminado Cinema', points: 20, needsTeam: true, needsPlayer: false },
+    { type: 'top_scorer_cinema', label: '🎬 Artilheiro Cinema', points: 20, needsTeam: false, needsPlayer: true },
     { type: 'champion', label: 'Campeão', points: 25, needsTeam: true, needsPlayer: false },
     { type: 'runner_up', label: 'Vice-campeão', points: 10, needsTeam: true, needsPlayer: false },
     { type: 'third_place', label: '3º Lugar', points: 5, needsTeam: true, needsPlayer: false },
     { type: 'top_scorer', label: 'Artilheiro', points: 15, needsTeam: false, needsPlayer: true },
-  ].filter(bt => !(isLivre && (bt.type === 'third_place' || bt.type === 'third_place_cinema')))
+  ].filter(bt => {
+    if (isLivre && (bt.type === 'third_place' || bt.type === 'third_place_cinema')) return false
+    if (!isVeterano && bt.type === 'relegated_cinema_2') return false
+    return true
+  })
 
   return (
     <Card className="bg-navy-900 border-navy-700">
@@ -817,10 +823,10 @@ export default function Pool() {
                 <h3 className="text-sm font-bold text-amber-400">Apostas Cinema & Extras</h3>
               </div>
               <p className="text-xs text-slate-400 mb-1">
-                <strong>Cinema</strong>: Aposte no campeão, 2º, 3º colocado e último de cada categoria <strong>até {cinemaDeadlineLabel}</strong>. Campeão e Último valem 50 pts, 2º vale 20 pts, 3º vale 10 pts. Uma vez registrada, a aposta NÃO pode ser alterada.
+                <strong>Cinema</strong>: aposta feita <strong>antes do início do campeonato</strong> (até {cinemaDeadlineLabel}). Uma vez registrada, NÃO pode ser alterada.
               </p>
               <p className="text-xs text-slate-400">
-                <strong>Extras</strong>: Aposte no campeão (25 pts), vice (10 pts), 3º lugar (5 pts) e artilheiro (15 pts) de cada categoria <strong>até {extrasDeadlineLabel}</strong>.
+                <strong>Extras</strong>: aposta até a <strong>metade do campeonato</strong> (até {extrasDeadlineLabel}).
               </p>
               {!isCinemaOpen() && (
                 <p className="mt-2 text-xs text-red-300 flex items-center gap-1">
