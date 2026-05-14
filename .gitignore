@@ -3,6 +3,12 @@
 .env.*.local
 .mcp.json
 
+# One-off migration scripts and data dumps (contain seed data, not part of app)
+migration/
+
+# User-provided spreadsheets
+*.xlsx
+
 # Logs
 logs
 *.log

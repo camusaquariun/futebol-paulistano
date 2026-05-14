@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Users, Search, Link2, Unlink, UserCircle, Mail, Calendar, Loader2, ShieldCheck, ShieldOff } from 'lucide-react'
 import type { Player } from '@/types/database'
 
-const EDGE_FN_URL = 'https://euufoowdghcczoovulfq.supabase.co/functions/v1/link-player'
+const EDGE_FN_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/link-player`
 
 interface AuthUser {
   id: string

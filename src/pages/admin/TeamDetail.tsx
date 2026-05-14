@@ -310,7 +310,7 @@ export default function TeamDetail() {
 
   const handleLinkUser = async (playerId: string, email: string) => {
     try {
-      const res = await fetch('https://euufoowdghcczoovulfq.supabase.co/functions/v1/link-player', {
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/link-player`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'link', player_id: playerId, email }),
@@ -538,7 +538,7 @@ export default function TeamDetail() {
         ) : (
           <div>
             <div className="flex items-center gap-3 py-2 px-4 border-b border-navy-700 text-xs text-slate-500 font-medium">
-              <div className="w-9" />
+              <div className="w-9 text-center">Nº</div>
               <div className="flex-1">Jogador</div>
               <div className="text-right">{editing ? 'Posições + Capitão' : 'Posições'}</div>
             </div>

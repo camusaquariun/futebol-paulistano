@@ -7,7 +7,7 @@ import { TeamBadge } from '@/components/TeamBadge'
 import { ChevronLeft, ChevronRight, Link2, CheckCircle, UserCircle, Loader2 } from 'lucide-react'
 import type { PlayerTeam } from '@/types/database'
 
-const EDGE_FN_URL = 'https://euufoowdghcczoovulfq.supabase.co/functions/v1/link-player'
+const EDGE_FN_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/link-player`
 
 const CATEGORY_COLORS: Record<string, string> = {
   Livre: 'from-pitch-600 to-pitch-800',
