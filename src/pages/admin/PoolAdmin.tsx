@@ -1,16 +1,18 @@
-import { useState, useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useState, useMemo, useEffect } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAdminChampionship } from '@/hooks/useAdminChampionship'
 import { useMatches, usePoolMatchBets, usePoolSeasonBets } from '@/hooks/useSupabase'
 import { buildLeaderboard, calculateMatchPoints, POINT_TIER_LABELS } from '@/lib/pool-points'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Trophy, Crown, Medal, ChevronDown, ChevronUp, Users, Link2 } from 'lucide-react'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
+import { Trophy, Crown, Medal, ChevronDown, ChevronUp, Users, Link2, Activity, Film, Target, Search, ChevronLeft, ChevronRight } from 'lucide-react'
 import { formatDate } from '@/lib/utils'
 import type { PoolMatchBet } from '@/types/database'
 
-type TabId = 'classificacao' | 'apostas' | 'participantes'
+type TabId = 'classificacao' | 'apostas' | 'todas' | 'participantes'
 
 const TIER_COLOR: Record<number, string> = {
   15: 'bg-pitch-500/20 text-pitch-400 border-pitch-500/30',
@@ -27,9 +29,49 @@ export default function PoolAdmin() {
   const [tab, setTab] = useState<TabId>('classificacao')
   const [expandedMatch, setExpandedMatch] = useState<string | null>(null)
 
+  const queryClient = useQueryClient()
   const { data: matches } = useMatches(championshipId)
   const { data: matchBets } = usePoolMatchBets(championshipId)
   const { data: seasonBets } = usePoolSeasonBets(championshipId)
+
+  // Auth users (for display_name)
+  const { data: authUsers } = useQuery({
+    queryKey: ['auth_users'],
+    queryFn: async () => {
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/link-player`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'list-users' }),
+      })
+      const d = await res.json()
+      return (d.users ?? []) as { id: string; email: string; display_name: string | null }[]
+    },
+  })
+  const userById = useMemo(() => {
+    const m = new Map<string, { name: string; email: string }>()
+    for (const u of authUsers ?? []) m.set(u.id, { name: u.display_name || u.email, email: u.email })
+    return m
+  }, [authUsers])
+
+  // Filters / pagination for "Todas as Apostas"
+  const [feedSearch, setFeedSearch] = useState('')
+  const [feedPage, setFeedPage] = useState(0)
+  const FEED_PAGE_SIZE = 50
+
+  // Realtime: invalidate bet queries whenever a row changes
+  useEffect(() => {
+    if (!championshipId) return
+    const ch = supabase
+      .channel('pool-admin-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pool_match_bets' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['pool_match_bets'] })
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pool_season_bets' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['pool_season_bets'] })
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
+  }, [championshipId, queryClient])
 
   // Players with linked user accounts in this championship
   const { data: linkedPlayers } = useQuery({
@@ -103,6 +145,7 @@ export default function PoolAdmin() {
   const tabs: { id: TabId; label: string }[] = [
     { id: 'classificacao', label: 'Classificação' },
     { id: 'apostas', label: 'Apostas por Partida' },
+    { id: 'todas', label: 'Todas as Apostas' },
     { id: 'participantes', label: 'Participantes' },
   ]
 
@@ -315,6 +358,189 @@ export default function PoolAdmin() {
           })}
         </div>
       )}
+
+      {/* ── TODAS AS APOSTAS ── */}
+      {tab === 'todas' && (() => {
+        const matchById = new Map((matches ?? []).map(m => [m.id, m]))
+        type Entry = {
+          id: string
+          kind: 'match' | 'season'
+          ts: string
+          isEdit: boolean
+          userId: string | null
+          name: string
+          email: string
+          description: React.ReactNode
+          extra?: React.ReactNode
+        }
+        const fmtBetType = (t: string) => ({
+          champion: 'Campeão',
+          runner_up: 'Vice-campeão',
+          third_place: '3º Lugar',
+          relegated: 'Eliminado 1ª Fase',
+          relegated_2: '2º Eliminado 1ª Fase',
+          top_scorer: 'Artilheiro',
+          champion_cinema: '🎬 Campeão Cinema',
+          runner_up_cinema: '🎬 2º Cinema',
+          third_place_cinema: '🎬 3º Cinema',
+          relegated_cinema: '🎬 Eliminado 1ª Fase Cinema',
+          relegated_cinema_2: '🎬 2º Eliminado 1ª Fase Cinema',
+          top_scorer_cinema: '🎬 Artilheiro Cinema',
+        } as Record<string, string>)[t] ?? t
+        const entries: Entry[] = []
+        for (const b of matchBets ?? []) {
+          const m = matchById.get(b.match_id)
+          const updated = (b as any).updated_at ?? b.created_at
+          const isEdit = !!(b as any).updated_at && (b as any).updated_at !== b.created_at
+          const uid = (b as any).user_id ?? null
+          const uMeta = uid ? userById.get(uid) : undefined
+          entries.push({
+            id: 'm_' + b.id,
+            kind: 'match',
+            ts: updated,
+            isEdit,
+            userId: uid,
+            name: uMeta?.name ?? (b as any).user_email ?? '—',
+            email: (b as any).user_email ?? '',
+            description: (
+              <span>
+                <span className="text-slate-300">{m?.home_team?.name ?? '?'}</span>
+                {' '}
+                <strong className="text-pitch-400">{b.home_score} × {b.away_score}</strong>
+                {' '}
+                <span className="text-slate-300">{m?.away_team?.name ?? '?'}</span>
+              </span>
+            ),
+            extra: m?.match_date ? (
+              <span className="text-[10px] text-slate-500">
+                jogo: {new Date(m.match_date).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+              </span>
+            ) : null,
+          })
+        }
+        for (const b of (seasonBets as any[]) ?? []) {
+          const updated = b.updated_at ?? b.created_at
+          const isEdit = !!b.updated_at && b.updated_at !== b.created_at
+          const target = b.team?.name ?? b.player?.name ?? '?'
+          const uid = b.user_id ?? null
+          const uMeta = uid ? userById.get(uid) : undefined
+          entries.push({
+            id: 's_' + b.id,
+            kind: 'season',
+            ts: updated,
+            isEdit,
+            userId: uid,
+            name: uMeta?.name ?? b.user_email ?? '—',
+            email: b.user_email ?? '',
+            description: (
+              <span>
+                <Badge className="bg-amber-500/20 text-amber-300 border-amber-500/30 text-[10px] mr-2">
+                  {b.category?.name ?? '?'}
+                </Badge>
+                <span className="text-slate-300">{fmtBetType(b.bet_type)}</span>
+                {' → '}
+                <strong className="text-pitch-400">{target}</strong>
+              </span>
+            ),
+          })
+        }
+        entries.sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime())
+
+        const normStr = (s: string) => s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase()
+        const q = normStr(feedSearch)
+        const filtered = q
+          ? entries.filter(e => normStr(e.name).includes(q) || normStr(e.email).includes(q))
+          : entries
+
+        const totalPages = Math.max(1, Math.ceil(filtered.length / FEED_PAGE_SIZE))
+        const page = Math.min(feedPage, totalPages - 1)
+        const pageStart = page * FEED_PAGE_SIZE
+        const pageEntries = filtered.slice(pageStart, pageStart + FEED_PAGE_SIZE)
+
+        const uniqueUsers = Array.from(new Set(entries.map(e => e.name))).sort()
+
+        return (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between text-xs text-slate-500 flex-wrap gap-2">
+              <p>Todas as apostas registradas, em ordem do mais recente. Atualiza em tempo real.</p>
+              <span className="flex items-center gap-1 text-pitch-400">
+                <Activity className="h-3 w-3 animate-pulse" />
+                ao vivo • {filtered.length}{q ? ` de ${entries.length}` : ''} apostas
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="relative flex-1 min-w-[220px]">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <Input
+                  placeholder="Filtrar por nome de usuário..."
+                  value={feedSearch}
+                  onChange={e => { setFeedSearch(e.target.value); setFeedPage(0) }}
+                  className="pl-10"
+                  list="user-name-list"
+                />
+                <datalist id="user-name-list">
+                  {uniqueUsers.map(u => <option key={u} value={u} />)}
+                </datalist>
+              </div>
+              {feedSearch && (
+                <Button variant="ghost" size="sm" onClick={() => { setFeedSearch(''); setFeedPage(0) }} className="text-slate-400">
+                  Limpar
+                </Button>
+              )}
+            </div>
+
+            {pageEntries.length === 0 ? (
+              <Card><CardContent className="py-8 text-center text-slate-500">
+                {q ? 'Nenhuma aposta encontrada para esse usuário.' : 'Nenhuma aposta registrada.'}
+              </CardContent></Card>
+            ) : (
+              pageEntries.map(e => (
+                <Card key={e.id} className="border-navy-700">
+                  <CardContent className="p-3">
+                    <div className="flex items-start justify-between gap-3 flex-wrap">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <Badge className={e.kind === 'match'
+                            ? 'bg-blue-500/20 text-blue-300 border-blue-500/30 text-[10px] gap-1'
+                            : 'bg-purple-500/20 text-purple-300 border-purple-500/30 text-[10px] gap-1'}>
+                            {e.kind === 'match' ? <Target className="h-3 w-3" /> : <Film className="h-3 w-3" />}
+                            {e.kind === 'match' ? 'Partida' : 'Temporada'}
+                          </Badge>
+                          {e.isEdit && (
+                            <Badge className="bg-slate-700/40 text-slate-300 border-slate-600/40 text-[10px]">editada</Badge>
+                          )}
+                          <span className="text-xs text-white font-medium">{e.name}</span>
+                          {e.email && e.email !== e.name && (
+                            <span className="text-[10px] text-slate-500">({e.email})</span>
+                          )}
+                        </div>
+                        <div className="text-sm">{e.description}</div>
+                        {e.extra && <div className="mt-0.5">{e.extra}</div>}
+                      </div>
+                      <div className="text-[11px] text-slate-500 text-right whitespace-nowrap">
+                        {new Date(e.ts).toLocaleString('pt-BR')}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            )}
+
+            {totalPages > 1 && (
+              <div className="flex items-center justify-center gap-2 pt-2">
+                <Button variant="ghost" size="sm" disabled={page === 0} onClick={() => setFeedPage(p => Math.max(0, p - 1))} className="text-slate-300">
+                  <ChevronLeft className="h-4 w-4" />Anterior
+                </Button>
+                <span className="text-xs text-slate-400 px-2">Página {page + 1} de {totalPages}</span>
+                <Button variant="ghost" size="sm" disabled={page >= totalPages - 1} onClick={() => setFeedPage(p => p + 1)} className="text-slate-300">
+                  Próxima<ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+          </div>
+        )
+      })()}
 
       {/* ── PARTICIPANTES ── */}
       {tab === 'participantes' && (

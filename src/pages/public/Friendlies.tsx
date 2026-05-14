@@ -12,6 +12,9 @@ import { Label } from '@/components/ui/label'
 import { Swords, Calendar, Clock, MapPin, Check, X, Plus, Lock } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
+// Feature flag — set to true to re-enable friendly challenges.
+const FRIENDLIES_ENABLED = false
+
 const VALID_TIMES = ['19:00', '20:00', '21:00']
 const DAY_NAMES: Record<number, string> = { 1: 'Segunda', 2: 'Terça', 4: 'Quinta' }
 const VALID_DAYS = [1, 2, 4] // Monday, Tuesday, Thursday
@@ -154,11 +157,23 @@ export default function Friendlies() {
           </div>
         </div>
         {user && myTeamId && (
-          <Button onClick={() => setShowCreate(!showCreate)}>
+          <Button onClick={() => setShowCreate(!showCreate)} disabled={!FRIENDLIES_ENABLED} title={!FRIENDLIES_ENABLED ? 'Amistosos temporariamente indisponíveis' : ''}>
             <Plus className="h-4 w-4 mr-2" />Criar Desafio
           </Button>
         )}
       </div>
+
+      {!FRIENDLIES_ENABLED && (
+        <Card className="border-amber-500/30 bg-amber-500/5">
+          <CardContent className="p-4 flex items-center gap-3">
+            <Lock className="h-5 w-5 text-amber-400 flex-shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-amber-300">Amistosos temporariamente indisponíveis</p>
+              <p className="text-xs text-slate-400 mt-0.5">A criação e aceitação de desafios está bloqueada no momento.</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Create challenge form */}
       {showCreate && user && myTeamId && (
@@ -304,7 +319,7 @@ export default function Friendlies() {
         <div className="text-center py-12 text-slate-400">
           <Swords className="h-12 w-12 mx-auto mb-3 opacity-30" />
           <p>Nenhum amistoso agendado.</p>
-          {user && myTeamId && <p className="text-sm mt-1">Crie um desafio para começar!</p>}
+          {FRIENDLIES_ENABLED && user && myTeamId && <p className="text-sm mt-1">Crie um desafio para começar!</p>}
         </div>
       )}
 
@@ -314,8 +329,8 @@ export default function Friendlies() {
           <h3 className="text-sm font-semibold text-slate-400 mb-3">Agenda da Semana</h3>
           <div className="grid grid-cols-3 gap-2">
             {getNextValidDates(6).map(date => {
-              const isBlocked = blockedDateSet.has(date)
-              const reason = getBlockedReason(date)
+              const isBlocked = !FRIENDLIES_ENABLED || blockedDateSet.has(date)
+              const reason = !FRIENDLIES_ENABLED ? 'amistosos desativados' : getBlockedReason(date)
               const times = VALID_TIMES.map(t => ({
                 time: t,
                 taken: takenSlots.has(`${date}_${t}`),
