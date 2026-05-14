@@ -25,7 +25,8 @@ Deno.serve(async (req: Request) => {
     { auth: { autoRefreshToken: false, persistSession: false } }
   );
 
-  const { action, email, player_id } = await req.json();
+  const body = await req.json();
+  const { action, email, player_id } = body;
 
   if (action === 'list-users') {
     const { data: { users }, error } = await supabaseAdmin.auth.admin.listUsers();
@@ -35,9 +36,46 @@ Deno.serve(async (req: Request) => {
       id: u.id,
       email: u.email,
       display_name: u.user_metadata?.display_name || null,
+      phone: u.user_metadata?.phone || u.phone || null,
       created_at: u.created_at,
     }));
     return jsonResponse({ users: safeUsers });
+  }
+
+  if (action === 'create-user') {
+    const { password, display_name, phone } = body;
+    if (!email || !password) return jsonResponse({ error: 'email e password são obrigatórios' }, 400);
+    const { data, error } = await supabaseAdmin.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+      user_metadata: { display_name: display_name || null, phone: phone || null },
+    });
+    if (error) return jsonResponse({ error: error.message }, 400);
+    return jsonResponse({ user_id: data.user?.id });
+  }
+
+  if (action === 'update-user') {
+    const { user_id, password, display_name, phone } = body;
+    if (!user_id) return jsonResponse({ error: 'user_id é obrigatório' }, 400);
+    const patch: Record<string, unknown> = {};
+    if (email) patch.email = email;
+    if (password) patch.password = password;
+    patch.user_metadata = { display_name: display_name || null, phone: phone || null };
+    const { error } = await supabaseAdmin.auth.admin.updateUserById(user_id, patch);
+    if (error) return jsonResponse({ error: error.message }, 400);
+    return jsonResponse({ success: true });
+  }
+
+  if (action === 'delete-user') {
+    const { user_id } = body;
+    if (!user_id) return jsonResponse({ error: 'user_id é obrigatório' }, 400);
+    // Unlink any players first
+    await supabaseAdmin.from('players').update({ user_id: null }).eq('user_id', user_id);
+    await supabaseAdmin.from('user_roles').delete().eq('user_id', user_id);
+    const { error } = await supabaseAdmin.auth.admin.deleteUser(user_id);
+    if (error) return jsonResponse({ error: error.message }, 400);
+    return jsonResponse({ success: true });
   }
 
   if (action === 'link') {

@@ -77,8 +77,10 @@ export default function PlayersAdmin() {
     }
   }
 
+  const norm = (s: string) => s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase()
+  const needle = norm(search)
   const filtered = (players ?? []).filter((p: any) => {
-    const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase())
+    const matchesSearch = norm(p.name).includes(needle)
     const matchesCat = filterCategory === 'all' || p.links?.some((l: any) => l.category_id === filterCategory)
     return matchesSearch && matchesCat
   })

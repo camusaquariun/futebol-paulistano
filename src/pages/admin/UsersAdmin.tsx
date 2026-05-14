@@ -5,8 +5,10 @@ import { usePlayers } from '@/hooks/useSupabase'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import { Users, Search, Link2, Unlink, UserCircle, Mail, Calendar, Loader2, ShieldCheck, ShieldOff } from 'lucide-react'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { Users, Search, Link2, Unlink, UserCircle, Mail, Calendar, Loader2, ShieldCheck, ShieldOff, Phone, Plus, Pencil, Trash2 } from 'lucide-react'
 import type { Player } from '@/types/database'
 
 const EDGE_FN_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/link-player`
@@ -15,24 +17,48 @@ interface AuthUser {
   id: string
   email: string
   display_name: string | null
+  phone: string | null
   created_at: string
+}
+
+type UserFormState = {
+  mode: 'create' | 'edit'
+  id?: string
+  email: string
+  password: string
+  display_name: string
+  phone: string
+}
+
+const blankForm = (): UserFormState => ({
+  mode: 'create',
+  email: '',
+  password: '',
+  display_name: '',
+  phone: '',
+})
+
+async function callEdge(body: Record<string, unknown>) {
+  const res = await fetch(EDGE_FN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  return res.json()
 }
 
 function useAuthUsers() {
   return useQuery({
     queryKey: ['auth_users'],
     queryFn: async () => {
-      const res = await fetch(EDGE_FN_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'list-users' }),
-      })
-      const data = await res.json()
+      const data = await callEdge({ action: 'list-users' })
       if (data.error) throw new Error(data.error)
       return data.users as AuthUser[]
     },
   })
 }
+
+const norm = (s: string) => s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase()
 
 export default function UsersAdmin() {
   const { data: users, isLoading: usersLoading } = useAuthUsers()
@@ -43,6 +69,9 @@ export default function UsersAdmin() {
   const [playerSearch, setPlayerSearch] = useState('')
   const [actionLoading, setActionLoading] = useState(false)
   const [adminLoading, setAdminLoading] = useState<string | null>(null)
+  const [form, setForm] = useState<UserFormState | null>(null)
+  const [formSaving, setFormSaving] = useState(false)
+  const [formError, setFormError] = useState<string | null>(null)
 
   const { data: adminRoles } = useQuery({
     queryKey: ['user_roles'],
@@ -67,69 +96,97 @@ export default function UsersAdmin() {
     }
   }
 
-  // Map player user_id -> player for quick lookup
   const playerByUserId = new Map<string, Player>()
-  if (players) {
-    for (const p of players) {
-      if (p.user_id) playerByUserId.set(p.user_id, p)
-    }
-  }
+  if (players) for (const p of players) if (p.user_id) playerByUserId.set(p.user_id, p)
 
   const filteredUsers = (users ?? []).filter(u => {
-    const q = search.toLowerCase()
+    const q = norm(search)
     if (!q) return true
-    return (
-      u.email?.toLowerCase().includes(q) ||
-      u.display_name?.toLowerCase().includes(q)
-    )
+    return norm(u.email ?? '').includes(q) || norm(u.display_name ?? '').includes(q)
   })
 
   const filteredPlayers = (players ?? []).filter(p => {
     if (!playerSearch) return true
-    return p.name.toLowerCase().includes(playerSearch.toLowerCase())
-  }).filter(p => !p.user_id) // Only show unlinked players
+    return norm(p.name).includes(norm(playerSearch))
+  }).filter(p => !p.user_id)
 
   const handleLink = async (userId: string, playerId: string, email: string) => {
     setActionLoading(true)
     try {
-      const res = await fetch(EDGE_FN_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'link', player_id: playerId, email }),
-      })
-      const data = await res.json()
-      if (data.error) {
-        alert('Erro: ' + data.error)
-      } else {
-        queryClient.invalidateQueries({ queryKey: ['players'] })
-        queryClient.invalidateQueries({ queryKey: ['auth_users'] })
-        setLinking(null)
-        setPlayerSearch('')
-      }
-    } finally {
-      setActionLoading(false)
-    }
+      const data = await callEdge({ action: 'link', player_id: playerId, email })
+      if (data.error) { alert('Erro: ' + data.error); return }
+      queryClient.invalidateQueries({ queryKey: ['players'] })
+      queryClient.invalidateQueries({ queryKey: ['auth_users'] })
+      setLinking(null)
+      setPlayerSearch('')
+    } finally { setActionLoading(false) }
   }
 
   const handleUnlink = async (playerId: string) => {
     if (!confirm('Desvincular este jogador do usuário?')) return
     setActionLoading(true)
     try {
-      const res = await fetch(EDGE_FN_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'unlink', player_id: playerId }),
-      })
-      const data = await res.json()
-      if (data.error) {
-        alert('Erro: ' + data.error)
-      } else {
-        queryClient.invalidateQueries({ queryKey: ['players'] })
-        queryClient.invalidateQueries({ queryKey: ['auth_users'] })
+      const data = await callEdge({ action: 'unlink', player_id: playerId })
+      if (data.error) { alert('Erro: ' + data.error); return }
+      queryClient.invalidateQueries({ queryKey: ['players'] })
+      queryClient.invalidateQueries({ queryKey: ['auth_users'] })
+    } finally { setActionLoading(false) }
+  }
+
+  const handleDelete = async (user: AuthUser) => {
+    if (!confirm(`Excluir o usuário ${user.email}? Esta ação não pode ser desfeita.`)) return
+    setActionLoading(true)
+    try {
+      const data = await callEdge({ action: 'delete-user', user_id: user.id })
+      if (data.error) { alert('Erro: ' + data.error); return }
+      queryClient.invalidateQueries({ queryKey: ['auth_users'] })
+      queryClient.invalidateQueries({ queryKey: ['players'] })
+      queryClient.invalidateQueries({ queryKey: ['user_roles'] })
+    } finally { setActionLoading(false) }
+  }
+
+  const openCreate = () => {
+    setFormError(null)
+    setForm({ ...blankForm(), mode: 'create' })
+  }
+  const openEdit = (u: AuthUser) => {
+    setFormError(null)
+    setForm({
+      mode: 'edit',
+      id: u.id,
+      email: u.email ?? '',
+      password: '',
+      display_name: u.display_name ?? '',
+      phone: u.phone ?? '',
+    })
+  }
+
+  const submitForm = async () => {
+    if (!form) return
+    setFormSaving(true)
+    setFormError(null)
+    try {
+      const payload: Record<string, unknown> = {
+        action: form.mode === 'create' ? 'create-user' : 'update-user',
+        email: form.email.trim(),
+        display_name: form.display_name.trim() || null,
+        phone: form.phone.trim() || null,
       }
-    } finally {
-      setActionLoading(false)
-    }
+      if (form.mode === 'create') {
+        if (!form.email || !form.password) {
+          setFormError('Email e senha são obrigatórios')
+          return
+        }
+        payload.password = form.password
+      } else {
+        payload.user_id = form.id
+        if (form.password) payload.password = form.password
+      }
+      const data = await callEdge(payload)
+      if (data.error) { setFormError(data.error); return }
+      queryClient.invalidateQueries({ queryKey: ['auth_users'] })
+      setForm(null)
+    } finally { setFormSaving(false) }
   }
 
   const isLoading = usersLoading || playersLoading
@@ -146,14 +203,18 @@ export default function UsersAdmin() {
             Gerencie usuarios registrados e vincule-os aos jogadores do campeonato
           </p>
         </div>
-        {users && (
-          <Badge variant="secondary" className="text-sm">
-            {users.length} usuario{users.length !== 1 ? 's' : ''}
-          </Badge>
-        )}
+        <div className="flex items-center gap-3">
+          {users && (
+            <Badge variant="secondary" className="text-sm">
+              {users.length} usuario{users.length !== 1 ? 's' : ''}
+            </Badge>
+          )}
+          <Button onClick={openCreate} className="gap-2">
+            <Plus className="h-4 w-4" />Novo Usuário
+          </Button>
+        </div>
       </div>
 
-      {/* Search */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
         <Input
@@ -179,7 +240,6 @@ export default function UsersAdmin() {
               <Card key={user.id} className="border-navy-700">
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between gap-4">
-                    {/* User Info */}
                     <div className="flex items-center gap-3 min-w-0 flex-1">
                       <div className="bg-navy-700 rounded-full p-2 flex-shrink-0">
                         <UserCircle className="h-8 w-8 text-slate-400" />
@@ -199,6 +259,12 @@ export default function UsersAdmin() {
                           <Mail className="h-3.5 w-3.5" />
                           <span className="truncate">{user.email}</span>
                         </div>
+                        {user.phone && (
+                          <div className="flex items-center gap-1.5 text-sm text-slate-400">
+                            <Phone className="h-3.5 w-3.5" />
+                            <span className="truncate">{user.phone}</span>
+                          </div>
+                        )}
                         <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-0.5">
                           <Calendar className="h-3 w-3" />
                           Registrado em {new Date(user.created_at).toLocaleDateString('pt-BR')}
@@ -206,9 +272,7 @@ export default function UsersAdmin() {
                       </div>
                     </div>
 
-                    {/* Actions */}
                     <div className="flex items-center gap-2 flex-shrink-0">
-                      {/* Admin toggle */}
                       <Button
                         size="sm"
                         variant="ghost"
@@ -226,6 +290,25 @@ export default function UsersAdmin() {
                             ? <ShieldCheck className="h-4 w-4" />
                             : <ShieldOff className="h-4 w-4" />
                         }
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => openEdit(user)}
+                        className="text-slate-300 hover:text-white hover:bg-navy-700"
+                        title="Editar"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleDelete(user)}
+                        disabled={actionLoading}
+                        className="text-red-400 hover:text-red-300 hover:bg-red-400/10"
+                        title="Excluir"
+                      >
+                        <Trash2 className="h-4 w-4" />
                       </Button>
                       {linkedPlayer ? (
                         <div className="flex items-center gap-2">
@@ -260,7 +343,6 @@ export default function UsersAdmin() {
                     </div>
                   </div>
 
-                  {/* Linking Panel */}
                   {isLinking && (
                     <div className="mt-4 pt-4 border-t border-navy-700">
                       <div className="text-sm text-slate-400 mb-2">
@@ -321,6 +403,42 @@ export default function UsersAdmin() {
           )}
         </div>
       )}
+
+      <Dialog open={form !== null} onOpenChange={open => { if (!open) setForm(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{form?.mode === 'create' ? 'Novo Usuário' : 'Editar Usuário'}</DialogTitle>
+          </DialogHeader>
+          {form && (
+            <div className="space-y-3">
+              <div>
+                <Label htmlFor="u-name">Nome</Label>
+                <Input id="u-name" value={form.display_name} onChange={e => setForm({ ...form, display_name: e.target.value })} />
+              </div>
+              <div>
+                <Label htmlFor="u-email">Email</Label>
+                <Input id="u-email" type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} />
+              </div>
+              <div>
+                <Label htmlFor="u-phone">Telefone</Label>
+                <Input id="u-phone" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="(11) 99999-9999" />
+              </div>
+              <div>
+                <Label htmlFor="u-pw">{form.mode === 'create' ? 'Senha' : 'Nova senha (opcional)'}</Label>
+                <Input id="u-pw" type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })}
+                  placeholder={form.mode === 'edit' ? 'Deixe em branco para manter a atual' : ''} />
+              </div>
+              {formError && <p className="text-sm text-red-400">{formError}</p>}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setForm(null)} disabled={formSaving}>Cancelar</Button>
+            <Button onClick={submitForm} disabled={formSaving}>
+              {formSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Salvar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

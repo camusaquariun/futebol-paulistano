@@ -1,6 +1,7 @@
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { useCategories, useActiveChampionship, useChampionshipCategories } from '@/hooks/useSupabase'
 import type { ReactNode } from 'react'
+import { useSearchParams } from 'react-router-dom'
 
 interface CategoryTabsProps {
   children: (categoryId: string, categoryName: string) => ReactNode
@@ -31,8 +32,20 @@ export function CategoryTabs({ children }: CategoryTabsProps) {
     )
   }
 
+  const [searchParams, setSearchParams] = useSearchParams()
+  const requested = searchParams.get('cat')
+  const initial = activeCategories.find(c => c.id === requested)?.id ?? activeCategories[0]?.id
+
   return (
-    <Tabs defaultValue={activeCategories[0]?.id} className="w-full">
+    <Tabs
+      value={initial}
+      onValueChange={(v) => {
+        const next = new URLSearchParams(searchParams)
+        next.set('cat', v)
+        setSearchParams(next, { replace: true })
+      }}
+      className="w-full"
+    >
       <TabsList className="w-full justify-start mb-6">
         {activeCategories.map(cat => (
           <TabsTrigger key={cat.id} value={cat.id} className="min-w-[100px]">

@@ -70,7 +70,7 @@ export default function Home() {
       {activeCategories.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
           {activeCategories.map(cat => (
-            <Link key={cat.id} to={`/classificacao`}>
+            <Link key={cat.id} to={`/classificacao?cat=${cat.id}`}>
               <Card className={`card-hover overflow-hidden border-0 bg-gradient-to-br ${categoryColors[cat.name] || 'from-navy-600 to-navy-800'}`}>
                 <CardContent className="p-6 text-center">
                   <div className="text-4xl mb-3">{categoryIcons[cat.name] || '⚽'}</div>
