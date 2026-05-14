@@ -1,10 +1,10 @@
 import { useParams, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { useActiveChampionship, useTeamRoster, useTeamMatches, useCategories, useTeams } from '@/hooks/useSupabase'
+import { useActiveChampionship, useTeamRoster, useTeamMatches, useCategories, useTeams, useMatches } from '@/hooks/useSupabase'
 import { supabase } from '@/lib/supabase'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { ChevronLeft, Calendar, MapPin, Crown, TrendingUp, UserCircle, Star, ShieldAlert } from 'lucide-react'
+import { ChevronLeft, Calendar, MapPin, Crown, TrendingUp, UserCircle, Star, ShieldAlert, Award, Target } from 'lucide-react'
 import { formatDate, phaseLabel } from '@/lib/utils'
 import type { Match, PlayerTeam } from '@/types/database'
 
@@ -165,13 +165,13 @@ export default function TeamProfile() {
 
   const captain = activeRoster?.roster.find(pt => pt.is_captain)
 
-  // Match events (cards)
+  // Match events (cards, goals)
   const { data: events } = useQuery({
     queryKey: ['team_events', teamId, championshipId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('match_events')
-        .select('*, match:matches!inner(championship_id)')
+        .select('*, match:matches!inner(championship_id, status)')
         .eq('team_id', teamId!)
         .eq('match.championship_id', championshipId!)
       if (error) throw error
@@ -183,16 +183,37 @@ export default function TeamProfile() {
   const yellowCards = events?.filter(e => e.event_type === 'yellow_card').length ?? 0
   const redCards = events?.filter(e => e.event_type === 'red_card').length ?? 0
 
-  // Per-player card counts
+  // Per-player counts
   const playerYellowCards = new Map<string, number>()
   const playerRedCards = new Map<string, number>()
+  const playerGoals = new Map<string, number>()
   events?.forEach(e => {
     if (!e.player_id) return
     if (e.event_type === 'yellow_card') {
       playerYellowCards.set(e.player_id, (playerYellowCards.get(e.player_id) ?? 0) + 1)
     } else if (e.event_type === 'red_card') {
       playerRedCards.set(e.player_id, (playerRedCards.get(e.player_id) ?? 0) + 1)
+    } else if (e.event_type === 'goal') {
+      playerGoals.set(e.player_id, (playerGoals.get(e.player_id) ?? 0) + 1)
     }
+  })
+
+  // Per-player matches played (attendance in finished matches)
+  const { data: playerMatchesPlayed } = useQuery({
+    queryKey: ['team_attendance', teamId, championshipId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('match_attendance')
+        .select('player_id, match:matches!inner(championship_id, status)')
+        .eq('team_id', teamId!)
+        .eq('present', true)
+        .eq('match.championship_id', championshipId!)
+        .eq('match.status', 'finished')
+      const map = new Map<string, number>()
+      for (const r of data ?? []) map.set(r.player_id, (map.get(r.player_id) ?? 0) + 1)
+      return map
+    },
+    enabled: !!teamId && !!championshipId,
   })
 
   // Calculate stats from matches
@@ -224,6 +245,37 @@ export default function TeamProfile() {
   // Count MOTM awards: matches where motm_player_id matches any player in team roster
   const rosterPlayerIds = activeRoster?.roster.map(pt => pt.player_id) ?? []
   const motmCount = finishedMatches.filter(m => m.motm_player_id && rosterPlayerIds.includes(m.motm_player_id)).length
+
+  // Per-player MOTM count
+  const playerMotm = new Map<string, number>()
+  for (const m of finishedMatches) {
+    if (m.motm_player_id && rosterPlayerIds.includes(m.motm_player_id)) {
+      playerMotm.set(m.motm_player_id, (playerMotm.get(m.motm_player_id) ?? 0) + 1)
+    }
+  }
+
+  // Team position in category standings (compute from category matches)
+  const { data: catMatches } = useMatches(championshipId, activeRoster?.catId)
+  const teamPosition = (() => {
+    if (!catMatches || !activeRoster) return null
+    const stats = new Map<string, { pts: number; gd: number; gf: number; ga: number }>()
+    for (const m of catMatches) {
+      if (m.status !== 'finished' || m.home_score == null || m.away_score == null) continue
+      const h = stats.get(m.home_team_id) ?? { pts: 0, gd: 0, gf: 0, ga: 0 }
+      const a = stats.get(m.away_team_id) ?? { pts: 0, gd: 0, gf: 0, ga: 0 }
+      h.gf += m.home_score; h.ga += m.away_score; h.gd = h.gf - h.ga
+      a.gf += m.away_score; a.ga += m.home_score; a.gd = a.gf - a.ga
+      if (m.home_score > m.away_score) h.pts += 3
+      else if (m.home_score < m.away_score) a.pts += 3
+      else { h.pts += 1; a.pts += 1 }
+      stats.set(m.home_team_id, h); stats.set(m.away_team_id, a)
+    }
+    const ranked = [...stats.entries()]
+      .map(([id, s]) => ({ id, ...s }))
+      .sort((a, b) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf)
+    const idx = ranked.findIndex(r => r.id === teamId)
+    return idx >= 0 ? { position: idx + 1, total: ranked.length } : null
+  })()
 
   // Active suspensions for this team's players
   const { data: suspendedSet } = useQuery({
@@ -279,6 +331,12 @@ export default function TeamProfile() {
           {activeRoster && (
             <div className="flex items-center gap-2 mt-1 flex-wrap">
               <Badge variant="secondary">{activeRoster.catName}</Badge>
+              {teamPosition && (
+                <Badge className="bg-pitch-600/20 text-pitch-300 border-pitch-600/40 gap-1">
+                  <TrendingUp className="h-3.5 w-3.5" />
+                  {teamPosition.position}º de {teamPosition.total} na classificação
+                </Badge>
+              )}
               <span className="text-sm text-slate-400">{activeRoster.roster.length} jogadores</span>
               {captain && (
                 <span className="text-sm text-gold-400 flex items-center gap-1">
@@ -398,32 +456,55 @@ export default function TeamProfile() {
               const isGk = positions.includes('Goleiro')
               const isSuspended = suspendedSet?.has(pt.player_id) ?? false
               const yellows = playerYellowCards.get(pt.player_id) ?? 0
+              const reds = playerRedCards.get(pt.player_id) ?? 0
+              const goals = playerGoals.get(pt.player_id) ?? 0
+              const games = playerMatchesPlayed?.get(pt.player_id) ?? 0
+              const motm = playerMotm.get(pt.player_id) ?? 0
               return (
-                <div key={pt.id} className="flex items-center gap-3 py-3 px-4 border-b border-navy-800 last:border-0">
-                  <div className={`h-9 w-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 relative ${isGk ? 'bg-gold-500/20 text-gold-400' : 'bg-navy-700 text-slate-300'}`}>
-                    {pt.player?.name?.charAt(0) ?? '?'}
-                    {pt.is_captain && (
-                      <div className="absolute -top-1 -right-1 bg-gold-500 rounded-full p-0.5">
-                        <Crown className="h-2.5 w-2.5 text-navy-950" />
+                <div key={pt.id} className="flex flex-col sm:flex-row sm:items-center gap-3 py-3 px-4 border-b border-navy-800 last:border-0">
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <div className={`h-9 w-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 relative ${isGk ? 'bg-gold-500/20 text-gold-400' : 'bg-navy-700 text-slate-300'}`}>
+                      {pt.jersey_number ?? (pt.player?.name?.charAt(0) ?? '?')}
+                      {pt.is_captain && (
+                        <div className="absolute -top-1 -right-1 bg-gold-500 rounded-full p-0.5">
+                          <Crown className="h-2.5 w-2.5 text-navy-950" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <p className="font-medium text-white text-sm">{pt.player?.name}</p>
+                        {pt.is_captain && <Badge variant="warning" className="text-[9px] px-1 py-0">C</Badge>}
+                        {isSuspended && <Badge variant="destructive" className="text-[9px] px-1 py-0">Suspenso</Badge>}
                       </div>
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <p className="font-medium text-white text-sm">{pt.player?.name}</p>
-                      {pt.is_captain && <Badge variant="warning" className="text-[9px] px-1 py-0">C</Badge>}
-                      {isSuspended
-                        ? <Badge variant="destructive" className="text-[9px] px-1 py-0">Suspenso</Badge>
-                        : <YellowCardIcons count={yellows} />
-                      }
+                      {positions.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {positions.map(pos => <PositionBadge key={pos} pos={pos} />)}
+                        </div>
+                      )}
                     </div>
                   </div>
-                  <div className="flex flex-wrap gap-1 justify-end">
-                    {positions.length > 0 ? positions.map(pos => (
-                      <PositionBadge key={pos} pos={pos} />
-                    )) : (
-                      <span className="text-xs text-slate-600">&mdash;</span>
-                    )}
+                  <div className="flex items-center gap-3 text-xs text-slate-300 flex-wrap sm:flex-nowrap pl-12 sm:pl-0">
+                    <span className="flex items-center gap-1" title="Jogos">
+                      <Calendar className="h-3.5 w-3.5 text-slate-400" />
+                      <span className="font-semibold">{games}</span>
+                    </span>
+                    <span className="flex items-center gap-1" title="Gols">
+                      <Target className="h-3.5 w-3.5 text-pitch-400" />
+                      <span className="font-semibold text-pitch-400">{goals}</span>
+                    </span>
+                    <span className="flex items-center gap-1" title="Cartões amarelos">
+                      <span className="inline-block w-2.5 h-3.5 bg-yellow-400 rounded-[2px]" />
+                      <span className="font-semibold text-yellow-400">{yellows}</span>
+                    </span>
+                    <span className="flex items-center gap-1" title="Cartões vermelhos">
+                      <span className="inline-block w-2.5 h-3.5 bg-red-500 rounded-[2px]" />
+                      <span className="font-semibold text-red-400">{reds}</span>
+                    </span>
+                    <span className="flex items-center gap-1" title="Melhor em campo">
+                      <Award className="h-3.5 w-3.5 text-gold-400" />
+                      <span className="font-semibold text-gold-400">{motm}</span>
+                    </span>
                   </div>
                 </div>
               )

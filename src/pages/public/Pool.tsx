@@ -19,7 +19,8 @@ import type { Category, Championship, Match, PoolSeasonBetType } from '@/types/d
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Trophy, Clock, Check, Lock, BarChart3, Film, ChevronDown, ChevronUp, LogIn, Star, Target, TrendingUp } from 'lucide-react'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { Trophy, Clock, Check, Lock, BarChart3, Film, ChevronDown, ChevronUp, LogIn, Star, Target, TrendingUp, AlertTriangle } from 'lucide-react'
 import { usePoolMatchBets, usePoolSeasonBets } from '@/hooks/useSupabase'
 
 type TabId = 'apostas' | 'cinema'
@@ -32,7 +33,7 @@ interface CinemaCategorySectionProps {
   savingCinema: string | null
   setSavingCinema: React.Dispatch<React.SetStateAction<string | null>>
   mySeasonBetMap: Map<string, any>
-  handleSaveCinemaBet: (categoryId: string, betType: PoolSeasonBetType, teamId?: string, playerId?: string) => void
+  handleSaveCinemaBet: (categoryId: string, betType: PoolSeasonBetType, teamId?: string, playerId?: string, betLabel?: string, selectionName?: string) => void
   players: any[]
 }
 
@@ -77,6 +78,8 @@ function CinemaCategorySection({
             const existing = mySeasonBetMap.get(key)
             const localValue = cinemaBets[key]
             const isSaving = savingCinema === key
+            const isCinema = bt.type.endsWith('_cinema')
+            const isLocked = isCinema && !!existing
 
             return (
               <div key={bt.type} className="flex flex-col sm:flex-row sm:items-center gap-2 p-3 rounded-lg bg-slate-800/30 border border-slate-700/30">
@@ -86,6 +89,11 @@ function CinemaCategorySection({
                     <Badge className="bg-gold-500/20 text-gold-400 border-gold-500/30 text-[10px]">
                       {bt.points} pts
                     </Badge>
+                    {isLocked && (
+                      <Badge className="bg-red-500/20 text-red-300 border-red-500/30 text-[10px] gap-1">
+                        <Lock className="h-3 w-3" />Bloqueada
+                      </Badge>
+                    )}
                   </div>
                   {existing && !localValue && (
                     <p className="text-[10px] text-pitch-400 mt-0.5">
@@ -94,44 +102,55 @@ function CinemaCategorySection({
                   )}
                 </div>
                 <div className="flex items-center gap-2">
-                  {bt.needsTeam && (
-                    <select
-                      value={localValue ?? existing?.team_id ?? ''}
-                      onChange={e => setCinemaBets(prev => ({ ...prev, [key]: e.target.value }))}
-                      className="bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-pitch-500 max-w-[180px]"
-                    >
-                      <option value="">Selecionar time...</option>
-                      {(catTeams ?? []).map(t => (
-                        <option key={t.id} value={t.id}>{t.name}</option>
-                      ))}
-                    </select>
-                  )}
-                  {bt.needsPlayer && (
-                    <select
-                      value={localValue ?? existing?.player_id ?? ''}
-                      onChange={e => setCinemaBets(prev => ({ ...prev, [key]: e.target.value }))}
-                      className="bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-pitch-500 max-w-[180px]"
-                    >
-                      <option value="">Selecionar jogador...</option>
-                      {catPlayers.map((p: any) => (
-                        <option key={p.id} value={p.id}>{p.name}</option>
-                      ))}
-                    </select>
-                  )}
-                  {localValue && localValue !== (existing?.team_id ?? existing?.player_id ?? '') && (
-                    <Button
-                      onClick={() => handleSaveCinemaBet(
-                        category.id,
-                        bt.type,
-                        bt.needsTeam ? localValue : undefined,
-                        bt.needsPlayer ? localValue : undefined,
+                  {isLocked ? null : (
+                    <>
+                      {bt.needsTeam && (
+                        <select
+                          value={localValue ?? existing?.team_id ?? ''}
+                          onChange={e => setCinemaBets(prev => ({ ...prev, [key]: e.target.value }))}
+                          className="bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-pitch-500 max-w-[180px]"
+                        >
+                          <option value="">Selecionar time...</option>
+                          {(catTeams ?? []).map(t => (
+                            <option key={t.id} value={t.id}>{t.name}</option>
+                          ))}
+                        </select>
                       )}
-                      disabled={isSaving}
-                      className="h-8 px-3 bg-pitch-600 hover:bg-pitch-700 text-xs"
-                    >
-                      <Check className="h-3 w-3 mr-1" />
-                      Salvar
-                    </Button>
+                      {bt.needsPlayer && (
+                        <select
+                          value={localValue ?? existing?.player_id ?? ''}
+                          onChange={e => setCinemaBets(prev => ({ ...prev, [key]: e.target.value }))}
+                          className="bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-pitch-500 max-w-[180px]"
+                        >
+                          <option value="">Selecionar jogador...</option>
+                          {catPlayers.map((p: any) => (
+                            <option key={p.id} value={p.id}>{p.name}</option>
+                          ))}
+                        </select>
+                      )}
+                      {localValue && localValue !== (existing?.team_id ?? existing?.player_id ?? '') && (
+                        <Button
+                          onClick={() => {
+                            const selName = bt.needsTeam
+                              ? (catTeams ?? []).find(t => t.id === localValue)?.name ?? ''
+                              : catPlayers.find((p: any) => p.id === localValue)?.name ?? ''
+                            handleSaveCinemaBet(
+                              category.id,
+                              bt.type,
+                              bt.needsTeam ? localValue : undefined,
+                              bt.needsPlayer ? localValue : undefined,
+                              bt.label,
+                              selName,
+                            )
+                          }}
+                          disabled={isSaving}
+                          className="h-8 px-3 bg-pitch-600 hover:bg-pitch-700 text-xs"
+                        >
+                          <Check className="h-3 w-3 mr-1" />
+                          Salvar
+                        </Button>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
@@ -310,9 +329,61 @@ export default function Pool() {
 
   const [cinemaBets, setCinemaBets] = useState<Record<string, string>>({})
   const [savingCinema, setSavingCinema] = useState<string | null>(null)
+  const [pendingCinema, setPendingCinema] = useState<{
+    categoryId: string
+    betType: PoolSeasonBetType
+    teamId?: string
+    playerId?: string
+    label: string
+    selectionName: string
+  } | null>(null)
+  const [confirmStep, setConfirmStep] = useState<1 | 2>(1)
 
-  const handleSaveCinemaBet = async (categoryId: string, betType: PoolSeasonBetType, teamId?: string, playerId?: string) => {
+  const executeCinemaSave = async (p: NonNullable<typeof pendingCinema>) => {
     if (!user || !championship) return
+    const key = `${p.categoryId}_${p.betType}`
+    setSavingCinema(key)
+    try {
+      await saveSeasonBet.mutateAsync({
+        user_id: user.id,
+        championship_id: championship.id,
+        category_id: p.categoryId,
+        user_email: user.email ?? '',
+        bet_type: p.betType,
+        team_id: p.teamId || null,
+        player_id: p.playerId || null,
+      })
+      setCinemaBets(prev => { const next = { ...prev }; delete next[key]; return next })
+    } catch (e: any) {
+      alert('Erro ao salvar aposta: ' + (e?.message ?? 'desconhecido'))
+    } finally {
+      setSavingCinema(null)
+    }
+  }
+
+  const handleSaveCinemaBet = async (
+    categoryId: string,
+    betType: PoolSeasonBetType,
+    teamId?: string,
+    playerId?: string,
+    betLabel?: string,
+    selectionName?: string,
+  ) => {
+    if (!user || !championship) return
+    const isCinema = betType.endsWith('_cinema')
+    if (isCinema) {
+      setPendingCinema({
+        categoryId,
+        betType,
+        teamId,
+        playerId,
+        label: betLabel ?? betType,
+        selectionName: selectionName ?? '',
+      })
+      setConfirmStep(1)
+      return
+    }
+    // Non-cinema season bets save directly (still editable)
     const key = `${categoryId}_${betType}`
     setSavingCinema(key)
     const existing = mySeasonBetMap.get(key)
@@ -326,11 +397,7 @@ export default function Pool() {
       team_id: teamId || null,
       player_id: playerId || null,
     })
-    setCinemaBets(prev => {
-      const next = { ...prev }
-      delete next[key]
-      return next
-    })
+    setCinemaBets(prev => { const next = { ...prev }; delete next[key]; return next })
     setSavingCinema(null)
   }
 
@@ -535,39 +602,53 @@ export default function Pool() {
                                 {phaseLabel(match.phase)}
                               </Badge>
                             </div>
-                            <div className="flex items-center gap-1 text-[10px] text-slate-500">
+                            <div className="text-[10px] text-slate-500">
                               {canBet ? (
-                                <>
-                                  <Clock className="h-3 w-3" />
-                                  Até {betDeadlineLabel(match.match_date)}
-                                </>
+                                <span>Aposte até {betDeadlineLabel(match.match_date)}</span>
                               ) : isFinished ? (
                                 'Encerrado'
                               ) : (
-                                <>
+                                <span className="flex items-center gap-1">
                                   <Lock className="h-3 w-3" />
-                                  Fechado
-                                </>
+                                  Apostas fechadas
+                                </span>
                               )}
                             </div>
                           </div>
+
+                          {/* Kickoff time (centered above teams) */}
+                          {match.match_date && (
+                            <div className="flex justify-center mb-1.5">
+                              <span className="inline-flex items-center gap-1 text-xs font-medium text-pitch-300">
+                                <Clock className="h-3.5 w-3.5" />
+                                {new Date(match.match_date).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            </div>
+                          )}
 
                           {/* Match row */}
                           <div className="flex items-center gap-2">
                             {/* Home team */}
                             <div className="flex-1 text-right">
-                              <div className="flex items-center justify-end gap-2">
-                                <span className="text-sm font-semibold text-white truncate">
-                                  {match.home_team?.name ?? '?'}
-                                </span>
-                                {match.home_team?.shield_url ? (
-                                  <img src={match.home_team.shield_url} alt="" className="h-6 w-6 rounded-full object-cover" />
-                                ) : (
-                                  <div className="h-6 w-6 rounded-full bg-slate-700 flex items-center justify-center text-[10px] font-bold text-slate-400">
-                                    {match.home_team?.name?.charAt(0)}
-                                  </div>
-                                )}
-                              </div>
+                              {match.home_team ? (
+                                <Link
+                                  to={`/times/${match.home_team.id}`}
+                                  className="flex items-center justify-end gap-2 hover:text-pitch-400 transition-colors"
+                                >
+                                  <span className="text-sm font-semibold text-white truncate hover:text-pitch-400">
+                                    {match.home_team.name}
+                                  </span>
+                                  {match.home_team.shield_url ? (
+                                    <img src={match.home_team.shield_url} alt="" className="h-6 w-6 rounded-full object-cover" />
+                                  ) : (
+                                    <div className="h-6 w-6 rounded-full bg-slate-700 flex items-center justify-center text-[10px] font-bold text-slate-400">
+                                      {match.home_team.name?.charAt(0)}
+                                    </div>
+                                  )}
+                                </Link>
+                              ) : (
+                                <span className="text-sm font-semibold text-white">?</span>
+                              )}
                             </div>
 
                             {/* Score / Bet inputs */}
@@ -660,18 +741,25 @@ export default function Pool() {
 
                             {/* Away team */}
                             <div className="flex-1 text-left">
-                              <div className="flex items-center gap-2">
-                                {match.away_team?.shield_url ? (
-                                  <img src={match.away_team.shield_url} alt="" className="h-6 w-6 rounded-full object-cover" />
-                                ) : (
-                                  <div className="h-6 w-6 rounded-full bg-slate-700 flex items-center justify-center text-[10px] font-bold text-slate-400">
-                                    {match.away_team?.name?.charAt(0)}
-                                  </div>
-                                )}
-                                <span className="text-sm font-semibold text-white truncate">
-                                  {match.away_team?.name ?? '?'}
-                                </span>
-                              </div>
+                              {match.away_team ? (
+                                <Link
+                                  to={`/times/${match.away_team.id}`}
+                                  className="flex items-center gap-2 hover:text-pitch-400 transition-colors"
+                                >
+                                  {match.away_team.shield_url ? (
+                                    <img src={match.away_team.shield_url} alt="" className="h-6 w-6 rounded-full object-cover" />
+                                  ) : (
+                                    <div className="h-6 w-6 rounded-full bg-slate-700 flex items-center justify-center text-[10px] font-bold text-slate-400">
+                                      {match.away_team.name?.charAt(0)}
+                                    </div>
+                                  )}
+                                  <span className="text-sm font-semibold text-white truncate hover:text-pitch-400">
+                                    {match.away_team.name}
+                                  </span>
+                                </Link>
+                              ) : (
+                                <span className="text-sm font-semibold text-white">?</span>
+                              )}
                             </div>
                           </div>
 
@@ -763,6 +851,70 @@ export default function Pool() {
           </div>
         </CardContent>
       </Card>
+
+      <Dialog open={pendingCinema !== null} onOpenChange={open => { if (!open) setPendingCinema(null) }}>
+        <DialogContent>
+          {pendingCinema && confirmStep === 1 && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2 text-amber-400">
+                  <AlertTriangle className="h-5 w-5" />
+                  Atenção: aposta permanente
+                </DialogTitle>
+              </DialogHeader>
+              <div className="space-y-3 text-sm text-slate-300">
+                <p>Você está prestes a registrar uma <strong className="text-white">aposta Cinema</strong>:</p>
+                <div className="rounded-lg bg-slate-800/50 border border-slate-700 p-3">
+                  <div className="text-white font-medium">{pendingCinema.label}</div>
+                  <div className="text-pitch-400 mt-1">→ {pendingCinema.selectionName}</div>
+                </div>
+                <p className="text-red-300">
+                  <Lock className="inline h-4 w-4 mr-1" />
+                  Uma vez registrada, <strong>essa aposta NÃO poderá ser alterada</strong> nem por um administrador.
+                </p>
+              </div>
+              <DialogFooter>
+                <Button variant="ghost" onClick={() => setPendingCinema(null)}>Cancelar</Button>
+                <Button onClick={() => setConfirmStep(2)} className="bg-amber-600 hover:bg-amber-700">
+                  Continuar
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+          {pendingCinema && confirmStep === 2 && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2 text-red-400">
+                  <AlertTriangle className="h-5 w-5" />
+                  Última confirmação
+                </DialogTitle>
+              </DialogHeader>
+              <div className="space-y-3 text-sm text-slate-300">
+                <p>Confirma definitivamente esta aposta?</p>
+                <div className="rounded-lg bg-slate-800/50 border border-red-500/30 p-3">
+                  <div className="text-white font-medium">{pendingCinema.label}</div>
+                  <div className="text-pitch-400 mt-1">→ {pendingCinema.selectionName}</div>
+                </div>
+                <p className="text-red-400 font-medium">Esta ação é IRREVERSÍVEL.</p>
+              </div>
+              <DialogFooter>
+                <Button variant="ghost" onClick={() => setPendingCinema(null)}>Cancelar</Button>
+                <Button
+                  onClick={async () => {
+                    const p = pendingCinema
+                    setPendingCinema(null)
+                    setConfirmStep(1)
+                    await executeCinemaSave(p)
+                  }}
+                  className="bg-red-600 hover:bg-red-700"
+                >
+                  Sim, registrar aposta
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

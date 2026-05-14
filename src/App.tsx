@@ -22,6 +22,7 @@ import FriendlyAdmin from '@/pages/admin/FriendlyAdmin'
 import RefereesAdmin from '@/pages/admin/Referees'
 import UsersAdmin from '@/pages/admin/UsersAdmin'
 import PoolAdmin from '@/pages/admin/PoolAdmin'
+import PoolAuditLog from '@/pages/admin/PoolAuditLog'
 import TeamProfile from '@/pages/public/TeamProfile'
 import MatchLive from '@/pages/public/MatchLive'
 import MyTeam from '@/pages/public/MyTeam'
@@ -79,6 +80,7 @@ export default function App() {
         <Route path="arbitragem" element={<RefereesAdmin />} />
         <Route path="usuarios" element={<UsersAdmin />} />
         <Route path="bolao" element={<PoolAdmin />} />
+        <Route path="bolao/auditoria" element={<PoolAuditLog />} />
       </Route>
     </Routes>
   )

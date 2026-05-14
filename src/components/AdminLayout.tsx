@@ -3,7 +3,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { AdminChampionshipProvider } from '@/hooks/useAdminChampionship'
 import { AdminChampionshipSelector } from '@/components/AdminChampionshipSelector'
 import {
-  LayoutDashboard, Trophy, Users, UserCircle, Calendar, ShieldAlert, LogOut, ChevronLeft, BarChart3, MapPin, Swords, Gavel, UserCheck, Ticket,
+  LayoutDashboard, Trophy, Users, UserCircle, Calendar, ShieldAlert, LogOut, ChevronLeft, BarChart3, MapPin, Swords, Gavel, UserCheck, Ticket, History,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -13,6 +13,7 @@ const sidebarItems = [
   { path: '/admin/amistosos', label: 'Amistosos', icon: Swords },
   { path: '/admin/arbitragem', label: 'Arbitragem', icon: Gavel },
   { path: '/admin/bolao', label: 'Bolão', icon: Ticket },
+  { path: '/admin/bolao/auditoria', label: 'Auditoria Bolão', icon: History },
   { path: '/admin/campeonatos', label: 'Campeonatos', icon: Trophy },
   { path: '/admin/classificacao', label: 'Classificação', icon: BarChart3 },
   { path: '/admin/jogadores', label: 'Jogadores', icon: UserCircle },
