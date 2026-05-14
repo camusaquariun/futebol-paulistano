@@ -25,6 +25,17 @@ import { usePoolMatchBets, usePoolSeasonBets } from '@/hooks/useSupabase'
 
 type TabId = 'apostas' | 'cinema'
 
+// Cinema bets: até 18/05/2026 20:00 BRT (início da 1ª rodada) = 18/05 23:00 UTC
+// Extras (non-cinema) season bets: até fim de 30/08/2026 BRT = 31/08 03:00 UTC
+const CINEMA_DEADLINE_MS = Date.UTC(2026, 4, 18, 23, 0, 0)
+const EXTRAS_DEADLINE_MS = Date.UTC(2026, 7, 31, 3, 0, 0)
+const cinemaDeadlineLabel = '18/05/2026, 20:00 (Brasília) — antes da 1ª rodada'
+const extrasDeadlineLabel = '30/08/2026, 23:59 (Brasília)'
+const isCinemaOpen = () => Date.now() < CINEMA_DEADLINE_MS
+const isExtrasOpen = () => Date.now() < EXTRAS_DEADLINE_MS
+const isBetOpen = (betType: string) => betType.endsWith('_cinema') ? isCinemaOpen() : isExtrasOpen()
+const deadlineLabelFor = (betType: string) => betType.endsWith('_cinema') ? cinemaDeadlineLabel : extrasDeadlineLabel
+
 interface CinemaCategorySectionProps {
   category: Category
   championship: Championship
@@ -53,16 +64,18 @@ function CinemaCategorySection({
     p.links?.some((l: any) => l.category_id === category.id)
   )
 
+  const isLivre = category.name === 'Livre'
   const betTypes: { type: PoolSeasonBetType; label: string; points: number; needsTeam: boolean; needsPlayer: boolean }[] = [
     { type: 'champion_cinema', label: '🎬 Campeão Cinema', points: 50, needsTeam: true, needsPlayer: false },
     { type: 'runner_up_cinema', label: '🎬 2º Colocado Cinema', points: 20, needsTeam: true, needsPlayer: false },
     { type: 'third_place_cinema', label: '🎬 3º Colocado Cinema', points: 10, needsTeam: true, needsPlayer: false },
     { type: 'relegated_cinema', label: '🎬 Último Colocado Cinema', points: 50, needsTeam: true, needsPlayer: false },
+    { type: 'top_scorer_cinema', label: '🎬 Artilheiro Cinema', points: 50, needsTeam: false, needsPlayer: true },
     { type: 'champion', label: 'Campeão', points: 25, needsTeam: true, needsPlayer: false },
     { type: 'runner_up', label: 'Vice-campeão', points: 10, needsTeam: true, needsPlayer: false },
     { type: 'third_place', label: '3º Lugar', points: 5, needsTeam: true, needsPlayer: false },
     { type: 'top_scorer', label: 'Artilheiro', points: 15, needsTeam: false, needsPlayer: true },
-  ]
+  ].filter(bt => !(isLivre && (bt.type === 'third_place' || bt.type === 'third_place_cinema')))
 
   return (
     <Card className="bg-navy-900 border-navy-700">
@@ -79,22 +92,28 @@ function CinemaCategorySection({
             const localValue = cinemaBets[key]
             const isSaving = savingCinema === key
             const isCinema = bt.type.endsWith('_cinema')
-            const isLocked = isCinema && !!existing
+            const open = isBetOpen(bt.type)
+            const isLocked = (isCinema && !!existing) || !open
+            const deadlineLabel = deadlineLabelFor(bt.type)
 
             return (
               <div key={bt.type} className="flex flex-col sm:flex-row sm:items-center gap-2 p-3 rounded-lg bg-slate-800/30 border border-slate-700/30">
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm font-medium text-white">{bt.label}</span>
                     <Badge className="bg-gold-500/20 text-gold-400 border-gold-500/30 text-[10px]">
                       {bt.points} pts
                     </Badge>
                     {isLocked && (
                       <Badge className="bg-red-500/20 text-red-300 border-red-500/30 text-[10px] gap-1">
-                        <Lock className="h-3 w-3" />Bloqueada
+                        <Lock className="h-3 w-3" />
+                        {isCinema && existing ? 'Bloqueada' : 'Encerrada'}
                       </Badge>
                     )}
                   </div>
+                  <p className="text-[10px] text-slate-500 mt-0.5">
+                    Aposte até <span className="text-slate-300">{deadlineLabel}</span>
+                  </p>
                   {existing && !localValue && (
                     <p className="text-[10px] text-pitch-400 mt-0.5">
                       Aposta: {bt.needsTeam && existing.team ? existing.team.name : ''}{bt.needsPlayer && existing.player ? existing.player.name : ''}
@@ -371,6 +390,10 @@ export default function Pool() {
   ) => {
     if (!user || !championship) return
     const isCinema = betType.endsWith('_cinema')
+    if (!isBetOpen(betType)) {
+      alert(`Apostas encerradas em ${deadlineLabelFor(betType)}.`)
+      return
+    }
     if (isCinema) {
       setPendingCinema({
         categoryId,
@@ -794,11 +817,23 @@ export default function Pool() {
                 <h3 className="text-sm font-bold text-amber-400">Apostas Cinema & Extras</h3>
               </div>
               <p className="text-xs text-slate-400 mb-1">
-                <strong>Cinema</strong>: Aposte no campeão e no último colocado de cada categoria <strong>antes do início do 2º turno</strong>. Vale 50 pontos cada!
+                <strong>Cinema</strong>: Aposte no campeão, 2º, 3º colocado e último de cada categoria <strong>até {cinemaDeadlineLabel}</strong>. Campeão e Último valem 50 pts, 2º vale 20 pts, 3º vale 10 pts. Uma vez registrada, a aposta NÃO pode ser alterada.
               </p>
               <p className="text-xs text-slate-400">
-                <strong>Extras</strong>: Aposte no campeão (25 pts), vice (10 pts), 3º lugar (5 pts) e artilheiro (15 pts) de cada categoria.
+                <strong>Extras</strong>: Aposte no campeão (25 pts), vice (10 pts), 3º lugar (5 pts) e artilheiro (15 pts) de cada categoria <strong>até {extrasDeadlineLabel}</strong>.
               </p>
+              {!isCinemaOpen() && (
+                <p className="mt-2 text-xs text-red-300 flex items-center gap-1">
+                  <Lock className="h-3.5 w-3.5" />
+                  Apostas Cinema encerradas em {cinemaDeadlineLabel}.
+                </p>
+              )}
+              {!isExtrasOpen() && (
+                <p className="mt-1 text-xs text-red-300 flex items-center gap-1">
+                  <Lock className="h-3.5 w-3.5" />
+                  Apostas Extras encerradas em {extrasDeadlineLabel}.
+                </p>
+              )}
             </CardContent>
           </Card>
 
