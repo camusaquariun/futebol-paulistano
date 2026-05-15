@@ -27,11 +27,11 @@ import { usePoolMatchBets, usePoolSeasonBets } from '@/hooks/useSupabase'
 
 type TabId = 'apostas' | 'cinema'
 
-// Cinema bets: até 18/05/2026 20:00 BRT (início da 1ª rodada) = 18/05 23:00 UTC
+// Cinema bets: até 18/05/2026 19:00 BRT (1h antes do 1º jogo) = 18/05 22:00 UTC
 // Extras (non-cinema) season bets: até fim de 30/08/2026 BRT = 31/08 03:00 UTC
-const CINEMA_DEADLINE_MS = Date.UTC(2026, 4, 18, 23, 0, 0)
+const CINEMA_DEADLINE_MS = Date.UTC(2026, 4, 18, 22, 0, 0)
 const EXTRAS_DEADLINE_MS = Date.UTC(2026, 7, 31, 3, 0, 0)
-const cinemaDeadlineLabel = '18/05/2026, 20:00 (Brasília) — antes da 1ª rodada'
+const cinemaDeadlineLabel = '18/05/2026, 19:00 (Brasília) — 1h antes do 1º jogo'
 const extrasDeadlineLabel = '30/08/2026, 23:59 (Brasília)'
 const isCinemaOpen = () => Date.now() < CINEMA_DEADLINE_MS
 const isExtrasOpen = () => Date.now() < EXTRAS_DEADLINE_MS
@@ -101,7 +101,9 @@ function CinemaCategorySection({
             const isSaving = savingCinema === key
             const isCinema = bt.type.endsWith('_cinema')
             const open = isBetOpen(bt.type)
-            const isLocked = (isCinema && !!existing) || !open
+            // Cinema bets used to be permanently locked once placed.
+            // Now they're editable up to the cinema deadline (1h before the 1st match).
+            const isLocked = !open
             const deadlineLabel = deadlineLabelFor(bt.type)
 
             return (
@@ -114,8 +116,7 @@ function CinemaCategorySection({
                     </Badge>
                     {isLocked && (
                       <Badge className="bg-red-500/20 text-red-300 border-red-500/30 text-[10px] gap-1">
-                        <Lock className="h-3 w-3" />
-                        {isCinema && existing ? 'Bloqueada' : 'Encerrada'}
+                        <Lock className="h-3 w-3" />Encerrada
                       </Badge>
                     )}
                   </div>
@@ -864,7 +865,7 @@ export default function Pool() {
                 <h3 className="text-sm font-bold text-amber-400">Apostas Cinema & Extras</h3>
               </div>
               <p className="text-xs text-slate-400 mb-1">
-                <strong>Cinema</strong>: aposta feita <strong>antes do início do campeonato</strong> (até {cinemaDeadlineLabel}). Uma vez registrada, NÃO pode ser alterada.
+                <strong>Cinema</strong>: aposta feita <strong>antes do início do campeonato</strong>. Pode ser feita e editada até {cinemaDeadlineLabel}. Depois disso, fica bloqueada.
               </p>
               <p className="text-xs text-slate-400">
                 <strong>Extras</strong>: aposta até a <strong>metade do campeonato</strong> (até {extrasDeadlineLabel}).
@@ -954,18 +955,18 @@ export default function Pool() {
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2 text-amber-400">
                   <AlertTriangle className="h-5 w-5" />
-                  Atenção: aposta permanente
+                  Aposta Cinema
                 </DialogTitle>
               </DialogHeader>
               <div className="space-y-3 text-sm text-slate-300">
-                <p>Você está prestes a registrar uma <strong className="text-white">aposta Cinema</strong>:</p>
+                <p>Você está registrando uma <strong className="text-white">aposta Cinema</strong>:</p>
                 <div className="rounded-lg bg-slate-800/50 border border-slate-700 p-3">
                   <div className="text-white font-medium">{pendingCinema.label}</div>
                   <div className="text-pitch-400 mt-1">→ {pendingCinema.selectionName}</div>
                 </div>
-                <p className="text-red-300">
+                <p className="text-amber-300">
                   <Lock className="inline h-4 w-4 mr-1" />
-                  Uma vez registrada, <strong>essa aposta NÃO poderá ser alterada</strong> nem por um administrador.
+                  Pode editar até <strong>{cinemaDeadlineLabel}</strong>. Após esse prazo, fica bloqueada.
                 </p>
               </div>
               <DialogFooter>
@@ -985,12 +986,12 @@ export default function Pool() {
                 </DialogTitle>
               </DialogHeader>
               <div className="space-y-3 text-sm text-slate-300">
-                <p>Confirma definitivamente esta aposta?</p>
+                <p>Confirma esta aposta?</p>
                 <div className="rounded-lg bg-slate-800/50 border border-red-500/30 p-3">
                   <div className="text-white font-medium">{pendingCinema.label}</div>
                   <div className="text-pitch-400 mt-1">→ {pendingCinema.selectionName}</div>
                 </div>
-                <p className="text-red-400 font-medium">Esta ação é IRREVERSÍVEL.</p>
+                <p className="text-amber-300 text-xs">Você ainda pode alterar até {cinemaDeadlineLabel}.</p>
               </div>
               <DialogFooter>
                 <Button variant="ghost" onClick={() => setPendingCinema(null)}>Cancelar</Button>

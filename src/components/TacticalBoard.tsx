@@ -226,7 +226,14 @@ export default function TacticalBoard({
   const [swapFirst, setSwapFirst] = useState<string | null>(null)
   const [history, setHistory] = useState<HistoryAction[]>([])
 
-  const visiblePlayers = showAway ? [...homePlayers, ...awayPlayers] : homePlayers
+  // Always normalize side from array membership, so any stale/saved side='away' on a
+  // home-team player (e.g. captain) doesn't accidentally render with the away color.
+  const visiblePlayers = showAway
+    ? [
+        ...homePlayers.map(p => ({ ...p, side: 'home' as const })),
+        ...awayPlayers.map(p => ({ ...p, side: 'away' as const })),
+      ]
+    : homePlayers.map(p => ({ ...p, side: 'home' as const }))
 
   useEffect(() => {
     const pos: Record<string, { x: number; y: number }> = {}
