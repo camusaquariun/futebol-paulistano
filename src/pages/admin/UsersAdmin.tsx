@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { usePlayers } from '@/hooks/useSupabase'
@@ -89,6 +89,44 @@ export default function UsersAdmin() {
     },
   })
 
+  const { data: playerLinks } = useQuery({
+    queryKey: ['user_admin_player_links'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('player_teams')
+        .select('player_id, team:teams(id, name), category:categories(id, name)')
+      return data ?? []
+    },
+  })
+
+  // Build: player_id -> [{teamId, teamName, categoryId, categoryName}]
+  const playerLinksMap = useMemo(() => {
+    const m = new Map<string, { teamId: string; teamName: string; categoryId: string; categoryName: string }[]>()
+    for (const l of (playerLinks ?? []) as any[]) {
+      const arr = m.get(l.player_id) ?? []
+      arr.push({ teamId: l.team?.id, teamName: l.team?.name, categoryId: l.category?.id, categoryName: l.category?.name })
+      m.set(l.player_id, arr)
+    }
+    return m
+  }, [playerLinks])
+
+  const allTeams = useMemo(() => {
+    const s = new Map<string, string>()
+    for (const arr of playerLinksMap.values()) for (const l of arr) if (l.teamId) s.set(l.teamId, l.teamName)
+    return [...s.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name))
+  }, [playerLinksMap])
+
+  const allCategories = useMemo(() => {
+    const s = new Map<string, string>()
+    for (const arr of playerLinksMap.values()) for (const l of arr) if (l.categoryId) s.set(l.categoryId, l.categoryName)
+    return [...s.entries()].map(([id, name]) => ({ id, name }))
+  }, [playerLinksMap])
+
+  const [filterRole, setFilterRole] = useState<'all' | 'admin' | 'non_admin'>('all')
+  const [filterPool, setFilterPool] = useState<'all' | 'enabled' | 'disabled'>('all')
+  const [filterTeam, setFilterTeam] = useState<string>('all')
+  const [filterCategory, setFilterCategory] = useState<string>('all')
+
   const [poolLoading, setPoolLoading] = useState<string | null>(null)
   const handleTogglePool = async (userId: string, currently: boolean) => {
     setPoolLoading(userId)
@@ -122,9 +160,23 @@ export default function UsersAdmin() {
 
   const filteredUsers = (users ?? []).filter(u => {
     const q = norm(search)
-    if (!q) return true
-    return norm(u.email ?? '').includes(q) || norm(u.display_name ?? '').includes(q)
+    if (q && !(norm(u.email ?? '').includes(q) || norm(u.display_name ?? '').includes(q))) return false
+    const isAdmin = adminRoles?.has(u.id) ?? false
+    if (filterRole === 'admin' && !isAdmin) return false
+    if (filterRole === 'non_admin' && isAdmin) return false
+    const isPool = poolParticipants?.has(u.id) ?? false
+    if (filterPool === 'enabled' && !isPool) return false
+    if (filterPool === 'disabled' && isPool) return false
+    if (filterTeam !== 'all' || filterCategory !== 'all') {
+      const linkedPlayer = playerByUserId.get(u.id)
+      const links = linkedPlayer ? playerLinksMap.get(linkedPlayer.id) ?? [] : []
+      if (filterTeam !== 'all' && !links.some((l: any) => l.teamId === filterTeam)) return false
+      if (filterCategory !== 'all' && !links.some((l: any) => l.categoryId === filterCategory)) return false
+    }
+    return true
   })
+
+  const hasActiveFilter = filterRole !== 'all' || filterPool !== 'all' || filterTeam !== 'all' || filterCategory !== 'all' || !!search
 
   const filteredPlayers = (players ?? []).filter(p => {
     if (!playerSearch) return true
@@ -236,14 +288,65 @@ export default function UsersAdmin() {
         </div>
       </div>
 
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-        <Input
-          placeholder="Buscar por email ou nome..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="pl-10"
-        />
+      <div className="space-y-2">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+          <Input
+            placeholder="Buscar por email ou nome..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={filterRole}
+            onChange={e => setFilterRole(e.target.value as any)}
+            className="bg-slate-800 border border-slate-600 rounded px-3 py-1.5 text-sm text-white"
+          >
+            <option value="all">Todos os papéis</option>
+            <option value="admin">Apenas Admins</option>
+            <option value="non_admin">Apenas Jogadores</option>
+          </select>
+          <select
+            value={filterPool}
+            onChange={e => setFilterPool(e.target.value as any)}
+            className="bg-slate-800 border border-slate-600 rounded px-3 py-1.5 text-sm text-white"
+          >
+            <option value="all">Bolão: Todos</option>
+            <option value="enabled">Bolão: Liberados</option>
+            <option value="disabled">Bolão: Bloqueados</option>
+          </select>
+          <select
+            value={filterCategory}
+            onChange={e => setFilterCategory(e.target.value)}
+            className="bg-slate-800 border border-slate-600 rounded px-3 py-1.5 text-sm text-white"
+          >
+            <option value="all">Todas categorias</option>
+            {allCategories.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+          <select
+            value={filterTeam}
+            onChange={e => setFilterTeam(e.target.value)}
+            className="bg-slate-800 border border-slate-600 rounded px-3 py-1.5 text-sm text-white"
+          >
+            <option value="all">Todos os times</option>
+            {allTeams.map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+          {hasActiveFilter && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => { setSearch(''); setFilterRole('all'); setFilterPool('all'); setFilterTeam('all'); setFilterCategory('all') }}
+              className="text-slate-400"
+            >
+              Limpar filtros
+            </Button>
+          )}
+          <span className="ml-auto text-xs text-slate-500">
+            {filteredUsers.length}{hasActiveFilter ? ` de ${users?.length ?? 0}` : ''} usuários
+          </span>
+        </div>
       </div>
 
       {isLoading ? (

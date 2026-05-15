@@ -81,7 +81,7 @@ function CinemaCategorySection({
     { type: 'third_place', label: '3º Lugar', points: 5, needsTeam: true, needsPlayer: false },
   ] satisfies BetTypeDef[]).filter(bt => {
     if (isLivre && (bt.type === 'third_place' || bt.type === 'third_place_cinema')) return false
-    if (!isVeterano && (bt.type === 'relegated_cinema_2' || bt.type === 'relegated_2')) return false
+    if (!isVeterano && bt.type === 'relegated_cinema_2') return false
     return true
   })
 
