@@ -4,13 +4,16 @@
  * Scoring tiers (highest applicable wins):
  *  15 - Exact score (placar exato)
  *  10 - Correct winner + winner's goals correct
- *   8 - Correct winner + loser's goals correct
+ *   8 - Correct winner + loser's goals correct  /  Correct draw (any score)
  *   6 - Correct winner + correct goal difference
- *   5 - Correct winner/draw only
+ *   5 - Correct winner only (no other match)
  *   2 - One team's goals correct (wrong result)
  *   0 - Nothing correct
  *
- * Knockout bonus: +5 if correctly predicted advancing team
+ * Draw-specific rules:
+ *   Exact draw (1×1 → 1×1) ........... 15 pts
+ *   Correct draw, wrong score (1×1 → 2×2)  8 pts
+ *   Bet draw, one team correct (1×1 → 3×1)  2 pts
  */
 
 export function calculateMatchPoints(
@@ -27,7 +30,7 @@ export function calculateMatchPoints(
 
   if (betResult === actualResult) {
     // Draw correct but not exact
-    if (betResult === 'draw') return 5
+    if (betResult === 'draw') return 8
 
     // Winner correct — check sub-tiers
     const winnerBetGoals = betResult === 'home' ? betHome : betAway
@@ -51,7 +54,7 @@ export function calculateMatchPoints(
 export const POINT_TIER_LABELS: Record<number, string> = {
   15: 'Placar Exato',
   10: 'Venc. + Gols Venc.',
-  8: 'Venc. + Gols Perd.',
+  8: 'Venc. + Gols Perd. / Empate',
   6: 'Venc. + Saldo',
   5: 'Apenas Vencedor',
   2: 'Gols de 1 Time',

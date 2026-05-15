@@ -931,14 +931,15 @@ export default function Pool() {
           <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Pontuação</h3>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
             {[
-              { pts: 15, label: 'Placar Exato', ex: '4×2 → 4×2' },
+              { pts: 15, label: 'Placar Exato', ex: '4×2 → 4×2  /  1×1 → 1×1' },
               { pts: 10, label: 'Venc. + Gols Vencedor', ex: '4×2 → 4×0' },
               { pts: 8, label: 'Venc. + Gols Perdedor', ex: '4×2 → 2×0' },
+              { pts: 8, label: 'Empate (placar diferente)', ex: '1×1 → 2×2' },
               { pts: 6, label: 'Venc. + Saldo de Gols', ex: '4×2 → 3×1' },
               { pts: 5, label: 'Apenas Vencedor', ex: '4×2 → 1×0' },
-              { pts: 2, label: 'Gols de 1 Time', ex: '4×2 → 0×2' },
-            ].map(r => (
-              <div key={r.pts} className="bg-slate-800/30 rounded p-2">
+              { pts: 2, label: 'Gols de 1 Time', ex: '4×2 → 0×2  /  1×1 → 3×1' },
+            ].map((r, i) => (
+              <div key={i} className="bg-slate-800/30 rounded p-2">
                 <div className="font-bold text-amber-400">{r.pts} pts</div>
                 <div className="text-slate-300">{r.label}</div>
                 <div className="text-slate-500 text-[10px]">{r.ex}</div>
