@@ -1,11 +1,13 @@
 import { useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '@/hooks/useAuth'
 import { useMyPlayer, useMyTeams, useTeamRoster, useTeamMatches, useActiveChampionship } from '@/hooks/useSupabase'
+import { supabase } from '@/lib/supabase'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Link } from 'react-router-dom'
-import { Users, Calendar, Shield, Crown, Trophy, ChevronRight, UserCircle, MapPin, Swords } from 'lucide-react'
+import { Users, Calendar, Shield, Crown, Trophy, ChevronRight, UserCircle, MapPin, Swords, Pencil, Check, X, Loader2 } from 'lucide-react'
 import { formatDate, phaseLabel } from '@/lib/utils'
 import { TeamBadge } from '@/components/TeamBadge'
 import { PlayerLinkWizard } from '@/components/PlayerLinkWizard'
@@ -20,6 +22,8 @@ const POSITION_COLORS: Record<string, string> = {
   'Atacante': 'bg-red-500 text-white',
   'Centroavante': 'bg-orange-500 text-white',
 }
+
+const POSITION_OPTIONS = ['Goleiro', 'Zagueiro', 'Ala', 'Meio-campo', 'Meia-atacante', 'Atacante', 'Centroavante']
 
 function PositionBadge({ pos }: { pos: string }) {
   const colors = POSITION_COLORS[pos] ?? 'bg-navy-600 text-slate-300'
@@ -71,6 +75,35 @@ function TeamView({ activeLink, myPlayerId, championship }: { activeLink: any; m
   const captain = roster?.find((pt: PlayerTeam) => pt.is_captain)
   const finishedMatches = matches?.filter((m: Match) => m.status === 'finished') ?? []
   const scheduledMatches = matches?.filter((m: Match) => m.status === 'scheduled') ?? []
+
+  // Editing state for positions
+  const queryClient = useQueryClient()
+  const [editingPlayerTeamId, setEditingPlayerTeamId] = useState<string | null>(null)
+  const [editedPositions, setEditedPositions] = useState<string[]>([])
+  const [savingPositions, setSavingPositions] = useState(false)
+  const amICaptain = !!captain && captain.player_id === myPlayerId
+
+  const startEditPositions = (pt: PlayerTeam) => {
+    setEditingPlayerTeamId(pt.id)
+    setEditedPositions((pt.positions ?? []).filter(p => p !== 'Jogador'))
+  }
+  const togglePosition = (pos: string) => {
+    setEditedPositions(prev => prev.includes(pos) ? prev.filter(p => p !== pos) : [...prev, pos])
+  }
+  const savePositions = async () => {
+    if (!editingPlayerTeamId) return
+    setSavingPositions(true)
+    try {
+      const finalPositions = editedPositions.length > 0 ? editedPositions : ['Jogador']
+      const { error } = await supabase
+        .from('player_teams')
+        .update({ positions: finalPositions })
+        .eq('id', editingPlayerTeamId)
+      if (error) { alert('Erro ao salvar: ' + error.message); return }
+      queryClient.invalidateQueries({ queryKey: ['team_roster'] })
+      setEditingPlayerTeamId(null)
+    } finally { setSavingPositions(false) }
+  }
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
@@ -127,35 +160,93 @@ function TeamView({ activeLink, myPlayerId, championship }: { activeLink: any; m
                 const positions = pt.positions?.filter(p => p !== 'Jogador') ?? []
                 const isGk = positions.includes('Goleiro')
                 const isMe = pt.player_id === myPlayerId
+                const canEdit = isMe || amICaptain
+                const isEditing = editingPlayerTeamId === pt.id
 
                 return (
                   <div
                     key={pt.id}
-                    className={`flex items-center gap-3 py-3 px-4 border-b border-navy-800 last:border-0 ${isMe ? 'border-l-2 border-l-pitch-500 bg-pitch-500/5' : ''}`}
+                    className={`py-3 px-4 border-b border-navy-800 last:border-0 ${isMe ? 'border-l-2 border-l-pitch-500 bg-pitch-500/5' : ''}`}
                   >
-                    <div className={`h-9 w-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 relative ${isGk ? 'bg-gold-500/20 text-gold-400' : 'bg-navy-700 text-slate-300'}`}>
-                      {pt.jersey_number ?? pt.player?.name?.charAt(0) ?? '?'}
-                      {pt.is_captain && (
-                        <div className="absolute -top-1 -right-1 bg-gold-500 rounded-full p-0.5">
-                          <Crown className="h-2.5 w-2.5 text-navy-950" />
+                    <div className="flex items-center gap-3">
+                      <div className={`h-9 w-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 relative ${isGk ? 'bg-gold-500/20 text-gold-400' : 'bg-navy-700 text-slate-300'}`}>
+                        {pt.jersey_number ?? pt.player?.name?.charAt(0) ?? '?'}
+                        {pt.is_captain && (
+                          <div className="absolute -top-1 -right-1 bg-gold-500 rounded-full p-0.5">
+                            <Crown className="h-2.5 w-2.5 text-navy-950" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <p className={`font-medium text-sm ${isMe ? 'text-pitch-400' : 'text-white'}`}>
+                            {pt.player?.name}
+                          </p>
+                          {pt.is_captain && <Badge variant="warning" className="text-[9px] px-1 py-0">C</Badge>}
+                        </div>
+                      </div>
+                      {!isEditing && (
+                        <div className="flex flex-wrap gap-1 justify-end items-center">
+                          {positions.length > 0 ? positions.map(pos => (
+                            <PositionBadge key={pos} pos={pos} />
+                          )) : (
+                            <span className="text-xs text-slate-600">&mdash;</span>
+                          )}
+                          {canEdit && (
+                            <button
+                              onClick={() => startEditPositions(pt)}
+                              className="ml-1 p-1 text-slate-500 hover:text-pitch-400 hover:bg-pitch-500/10 rounded transition-colors"
+                              title="Editar posições"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <p className={`font-medium text-sm ${isMe ? 'text-pitch-400' : 'text-white'}`}>
-                          {pt.player?.name}
-                        </p>
-                        {pt.is_captain && <Badge variant="warning" className="text-[9px] px-1 py-0">C</Badge>}
+                    {isEditing && (
+                      <div className="mt-3 pl-12 space-y-2">
+                        <div className="flex flex-wrap gap-1.5">
+                          {POSITION_OPTIONS.map(pos => {
+                            const active = editedPositions.includes(pos)
+                            return (
+                              <button
+                                key={pos}
+                                onClick={() => togglePosition(pos)}
+                                className={`text-[10px] font-semibold px-2 py-1 rounded-full border transition-colors ${active
+                                  ? POSITION_COLORS[pos] + ' border-transparent'
+                                  : 'border-slate-600 text-slate-400 hover:border-pitch-500 hover:text-white'}`}
+                              >
+                                {pos}
+                              </button>
+                            )
+                          })}
+                        </div>
+                        <div className="flex gap-2 justify-end pt-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setEditingPlayerTeamId(null)}
+                            disabled={savingPositions}
+                            className="h-7 px-2 text-slate-400"
+                          >
+                            <X className="h-3.5 w-3.5 mr-1" />Cancelar
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={savePositions}
+                            disabled={savingPositions}
+                            className="h-7 px-3 bg-pitch-600 hover:bg-pitch-700"
+                          >
+                            {savingPositions
+                              ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+                              : <Check className="h-3.5 w-3.5 mr-1" />
+                            }
+                            Salvar
+                          </Button>
+                        </div>
                       </div>
-                    </div>
-                    <div className="flex flex-wrap gap-1 justify-end">
-                      {positions.length > 0 ? positions.map(pos => (
-                        <PositionBadge key={pos} pos={pos} />
-                      )) : (
-                        <span className="text-xs text-slate-600">&mdash;</span>
-                      )}
-                    </div>
+                    )}
                   </div>
                 )
               })
