@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { Users, Search, Link2, Unlink, UserCircle, Mail, Calendar, Loader2, ShieldCheck, ShieldOff, Phone, Plus, Pencil, Trash2 } from 'lucide-react'
+import { Users, Search, Link2, Unlink, UserCircle, Mail, Calendar, Loader2, ShieldCheck, ShieldOff, Phone, Plus, Pencil, Trash2, Ticket } from 'lucide-react'
 import type { Player } from '@/types/database'
 
 const EDGE_FN_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/link-player`
@@ -80,6 +80,27 @@ export default function UsersAdmin() {
       return new Set((data ?? []).map((r: any) => r.user_id as string))
     },
   })
+
+  const { data: poolParticipants } = useQuery({
+    queryKey: ['pool_participants'],
+    queryFn: async () => {
+      const { data } = await supabase.from('pool_participants').select('user_id')
+      return new Set((data ?? []).map((r: any) => r.user_id as string))
+    },
+  })
+
+  const [poolLoading, setPoolLoading] = useState<string | null>(null)
+  const handleTogglePool = async (userId: string, currently: boolean) => {
+    setPoolLoading(userId)
+    try {
+      if (currently) {
+        await supabase.from('pool_participants').delete().eq('user_id', userId)
+      } else {
+        await supabase.from('pool_participants').upsert({ user_id: userId }, { onConflict: 'user_id' })
+      }
+      queryClient.invalidateQueries({ queryKey: ['pool_participants'] })
+    } finally { setPoolLoading(null) }
+  }
 
   const handleToggleAdmin = async (userId: string, currentlyAdmin: boolean) => {
     if (!confirm(currentlyAdmin ? 'Remover permissão de admin?' : 'Tornar este usuário admin?')) return
@@ -235,6 +256,7 @@ export default function UsersAdmin() {
             const linkedPlayer = playerByUserId.get(user.id)
             const isLinking = linking === user.id
             const isAdmin = adminRoles?.has(user.id) ?? false
+            const isPoolMember = poolParticipants?.has(user.id) ?? false
 
             return (
               <Card key={user.id} className="border-navy-700">
@@ -252,6 +274,11 @@ export default function UsersAdmin() {
                           {isAdmin && (
                             <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30 text-[10px] px-1.5 py-0">
                               <ShieldCheck className="h-3 w-3 mr-0.5" />Admin
+                            </Badge>
+                          )}
+                          {isPoolMember && (
+                            <Badge className="bg-pitch-500/20 text-pitch-300 border-pitch-500/30 text-[10px] px-1.5 py-0">
+                              <Ticket className="h-3 w-3 mr-0.5" />Bolão
                             </Badge>
                           )}
                         </div>
@@ -290,6 +317,19 @@ export default function UsersAdmin() {
                             ? <ShieldCheck className="h-4 w-4" />
                             : <ShieldOff className="h-4 w-4" />
                         }
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleTogglePool(user.id, isPoolMember)}
+                        disabled={poolLoading === user.id}
+                        className={isPoolMember
+                          ? 'text-pitch-300 hover:text-pitch-200 hover:bg-pitch-500/10'
+                          : 'text-slate-500 hover:text-pitch-300 hover:bg-pitch-500/10'
+                        }
+                        title={isPoolMember ? 'Remover acesso ao Bolão' : 'Liberar acesso ao Bolão'}
+                      >
+                        {poolLoading === user.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Ticket className="h-4 w-4" />}
                       </Button>
                       <Button
                         size="sm"

@@ -1,6 +1,8 @@
 import { useState, useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
+import { supabase } from '@/lib/supabase'
 import {
   useActiveChampionship,
   useMatches,
@@ -202,6 +204,16 @@ export default function Pool() {
   const saveSeasonBet = useSavePoolSeasonBet()
   const { data: allMatchBets } = usePoolMatchBets(championship?.id)
   const { data: allSeasonBets } = usePoolSeasonBets(championship?.id)
+  const { data: isPoolMember } = useQuery({
+    queryKey: ['my_pool_membership', user?.id],
+    queryFn: async () => {
+      if (!user) return false
+      const { data } = await supabase.from('pool_participants').select('user_id').eq('user_id', user.id).maybeSingle()
+      return !!data
+    },
+    enabled: !!user,
+  })
+  const canBetThisUser = !!user && isPoolMember === true
 
   const [tab, setTab] = useState<TabId>('apostas')
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
@@ -397,6 +409,10 @@ export default function Pool() {
     selectionName?: string,
   ) => {
     if (!user || !championship) return
+    if (!canBetThisUser) {
+      alert('Você ainda não foi habilitado para apostar. Solicite acesso ao administrador.')
+      return
+    }
     const isCinema = betType.endsWith('_cinema')
     if (!isBetOpen(betType)) {
       alert(`Apostas encerradas em ${deadlineLabelFor(betType)}.`)
@@ -473,6 +489,20 @@ export default function Pool() {
         </Card>
       )}
 
+      {user && isPoolMember === false && (
+        <Card className="bg-amber-500/10 border-amber-500/30">
+          <CardContent className="p-4 flex items-center gap-3">
+            <Lock className="h-5 w-5 text-amber-400 flex-shrink-0" />
+            <div>
+              <p className="text-sm text-amber-300 font-medium">Você ainda não está habilitado para apostar.</p>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Solicite ao administrador para liberar seu acesso ao Bolão. Enquanto isso, você pode ver a classificação e as apostas registradas.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* My stats dashboard */}
       {user && myStats.totalBets > 0 && (
         <Card className="bg-gradient-to-r from-pitch-900/40 via-navy-900 to-navy-900 border-pitch-600/20">
@@ -539,6 +569,17 @@ export default function Pool() {
 
       {tab === 'apostas' && (
         <div className="space-y-4">
+          {user && !canBetThisUser && (
+            <Card className="border-amber-500/30 bg-amber-500/5">
+              <CardContent className="p-4 flex items-center gap-3">
+                <Lock className="h-5 w-5 text-amber-400 flex-shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-amber-300">Acesso ao Bolão pendente</p>
+                  <p className="text-xs text-slate-400 mt-0.5">Sua conta ainda não foi habilitada para apostar. Solicite acesso ao administrador.</p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
           {/* Category filter */}
           <div className="flex gap-2 flex-wrap">
             <button
@@ -747,7 +788,7 @@ export default function Pool() {
                                       <div className="text-lg font-bold text-pitch-400">
                                         {existing.home_score} × {existing.away_score}
                                       </div>
-                                      {canBet && user && (
+                                      {canBet && canBetThisUser && (
                                         <button
                                           onClick={() => startEditing(match.id)}
                                           className="text-[10px] text-slate-500 hover:text-pitch-400 transition-colors"
@@ -756,7 +797,7 @@ export default function Pool() {
                                         </button>
                                       )}
                                     </div>
-                                  ) : canBet && user ? (
+                                  ) : canBet && canBetThisUser ? (
                                     <button
                                       onClick={() => startEditing(match.id)}
                                       className="px-3 py-1.5 rounded bg-pitch-600/20 text-pitch-400 text-xs font-medium hover:bg-pitch-600/30 transition-colors"
@@ -851,7 +892,19 @@ export default function Pool() {
             </p>
           )}
 
-          {user && champCategories && (categories ?? []).map(category => {
+          {user && !canBetThisUser && (
+            <Card className="border-amber-500/30 bg-amber-500/5">
+              <CardContent className="p-4 flex items-center gap-3">
+                <Lock className="h-5 w-5 text-amber-400 flex-shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-amber-300">Acesso ao Bolão pendente</p>
+                  <p className="text-xs text-slate-400 mt-0.5">Sua conta ainda não foi habilitada para apostar. Solicite acesso ao administrador. Você continua vendo a classificação e os palpites dos outros usuários.</p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {user && canBetThisUser && champCategories && (categories ?? []).map(category => {
             const hasCat = champCategories.some((cc: any) => cc.category_id === category.id)
             if (!hasCat) return null
             return (
