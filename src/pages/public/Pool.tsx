@@ -931,7 +931,7 @@ export default function Pool() {
             {[
               { pts: 15, label: 'Placar Exato', ex: '4×2 → 4×2  /  1×1 → 1×1' },
               { pts: 10, label: 'Venc. + Gols Vencedor', ex: '4×2 → 4×0' },
-              { pts: 8, label: 'Venc. + Gols Perdedor', ex: '4×2 → 2×0' },
+              { pts: 8, label: 'Venc. + Gols Perdedor', ex: '4×2 → 3×2' },
               { pts: 8, label: 'Empate (placar diferente)', ex: '1×1 → 2×2' },
               { pts: 6, label: 'Venc. + Saldo de Gols', ex: '4×2 → 3×1' },
               { pts: 5, label: 'Apenas Vencedor', ex: '4×2 → 1×0' },
