@@ -1,11 +1,13 @@
 import { Link } from 'react-router-dom'
 import { useActiveChampionship, useChampionshipCategories, useCategories, useMatches } from '@/hooks/useSupabase'
+import { useAuth } from '@/hooks/useAuth'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Trophy, BarChart3, Calendar, Target, ShieldAlert, Clock, ChevronRight } from 'lucide-react'
+import { Trophy, BarChart3, Calendar, Target, ShieldAlert, Clock, ChevronRight, LogIn } from 'lucide-react'
 import { TeamBadge } from '@/components/TeamBadge'
 
 export default function Home() {
+  const { user } = useAuth()
   const { data: championship, isLoading } = useActiveChampionship()
   const { data: champCategories } = useChampionshipCategories(championship?.id)
   const { data: categories } = useCategories()
@@ -63,6 +65,15 @@ export default function Home() {
         )}
         {!championship && (
           <p className="text-lg text-slate-400 mt-4">Nenhum campeonato ativo no momento</p>
+        )}
+        {!user && (
+          <Link
+            to="/login"
+            className="mt-8 inline-flex items-center justify-center gap-3 px-10 py-5 text-xl sm:text-2xl font-extrabold rounded-2xl bg-gradient-to-r from-pitch-500 to-pitch-700 hover:from-pitch-400 hover:to-pitch-600 text-white shadow-2xl shadow-pitch-600/30 transition-all hover:scale-105 active:scale-100"
+          >
+            <LogIn className="h-7 w-7" />
+            Cadastre-se ou Login
+          </Link>
         )}
       </div>
 

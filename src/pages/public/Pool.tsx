@@ -79,8 +79,6 @@ function CinemaCategorySection({
     { type: 'champion', label: 'Campeão', points: 25, needsTeam: true, needsPlayer: false },
     { type: 'runner_up', label: 'Vice-campeão', points: 10, needsTeam: true, needsPlayer: false },
     { type: 'third_place', label: '3º Lugar', points: 5, needsTeam: true, needsPlayer: false },
-    { type: 'relegated', label: isVeterano ? '1º Eliminado 1ª Fase' : 'Eliminado 1ª Fase', points: 10, needsTeam: true, needsPlayer: false },
-    { type: 'relegated_2', label: '2º Eliminado 1ª Fase', points: 10, needsTeam: true, needsPlayer: false },
   ] satisfies BetTypeDef[]).filter(bt => {
     if (isLivre && (bt.type === 'third_place' || bt.type === 'third_place_cinema')) return false
     if (!isVeterano && (bt.type === 'relegated_cinema_2' || bt.type === 'relegated_2')) return false
