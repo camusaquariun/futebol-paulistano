@@ -126,6 +126,7 @@ export default function UsersAdmin() {
   const [filterPool, setFilterPool] = useState<'all' | 'enabled' | 'disabled'>('all')
   const [filterTeam, setFilterTeam] = useState<string>('all')
   const [filterCategory, setFilterCategory] = useState<string>('all')
+  const [filterLink, setFilterLink] = useState<'all' | 'linked' | 'unlinked'>('all')
 
   const [poolLoading, setPoolLoading] = useState<string | null>(null)
   const handleTogglePool = async (userId: string, currently: boolean) => {
@@ -167,16 +168,17 @@ export default function UsersAdmin() {
     const isPool = poolParticipants?.has(u.id) ?? false
     if (filterPool === 'enabled' && !isPool) return false
     if (filterPool === 'disabled' && isPool) return false
-    if (filterTeam !== 'all' || filterCategory !== 'all') {
-      const linkedPlayer = playerByUserId.get(u.id)
-      const links = linkedPlayer ? playerLinksMap.get(linkedPlayer.id) ?? [] : []
-      if (filterTeam !== 'all' && !links.some((l: any) => l.teamId === filterTeam)) return false
-      if (filterCategory !== 'all' && !links.some((l: any) => l.categoryId === filterCategory)) return false
-    }
+    const linkedPlayer = playerByUserId.get(u.id)
+    const links = linkedPlayer ? playerLinksMap.get(linkedPlayer.id) ?? [] : []
+    const hasTeam = !!linkedPlayer && links.length > 0
+    if (filterLink === 'linked' && !hasTeam) return false
+    if (filterLink === 'unlinked' && hasTeam) return false
+    if (filterTeam !== 'all' && !links.some((l: any) => l.teamId === filterTeam)) return false
+    if (filterCategory !== 'all' && !links.some((l: any) => l.categoryId === filterCategory)) return false
     return true
   })
 
-  const hasActiveFilter = filterRole !== 'all' || filterPool !== 'all' || filterTeam !== 'all' || filterCategory !== 'all' || !!search
+  const hasActiveFilter = filterRole !== 'all' || filterPool !== 'all' || filterTeam !== 'all' || filterCategory !== 'all' || filterLink !== 'all' || !!search
 
   const filteredPlayers = (players ?? []).filter(p => {
     if (!playerSearch) return true
@@ -318,6 +320,15 @@ export default function UsersAdmin() {
             <option value="disabled">Bolão: Bloqueados</option>
           </select>
           <select
+            value={filterLink}
+            onChange={e => setFilterLink(e.target.value as any)}
+            className="bg-slate-800 border border-slate-600 rounded px-3 py-1.5 text-sm text-white"
+          >
+            <option value="all">Vínculo: Todos</option>
+            <option value="linked">Vinculados a time</option>
+            <option value="unlinked">Sem time</option>
+          </select>
+          <select
             value={filterCategory}
             onChange={e => setFilterCategory(e.target.value)}
             className="bg-slate-800 border border-slate-600 rounded px-3 py-1.5 text-sm text-white"
@@ -337,7 +348,7 @@ export default function UsersAdmin() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => { setSearch(''); setFilterRole('all'); setFilterPool('all'); setFilterTeam('all'); setFilterCategory('all') }}
+              onClick={() => { setSearch(''); setFilterRole('all'); setFilterPool('all'); setFilterTeam('all'); setFilterCategory('all'); setFilterLink('all') }}
               className="text-slate-400"
             >
               Limpar filtros
