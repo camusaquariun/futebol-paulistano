@@ -68,7 +68,8 @@ function CinemaCategorySection({
 
   const isLivre = category.name === 'Livre'
   const isVeterano = category.name === 'Veterano'
-  const betTypes: { type: PoolSeasonBetType; label: string; points: number; needsTeam: boolean; needsPlayer: boolean }[] = [
+  type BetTypeDef = { type: PoolSeasonBetType; label: string; points: number; needsTeam: boolean; needsPlayer: boolean }
+  const betTypes: BetTypeDef[] = ([
     { type: 'champion_cinema', label: '🎬 Campeão Cinema', points: 50, needsTeam: true, needsPlayer: false },
     { type: 'runner_up_cinema', label: '🎬 2º Colocado Cinema', points: 20, needsTeam: true, needsPlayer: false },
     { type: 'third_place_cinema', label: '🎬 3º Colocado Cinema', points: 10, needsTeam: true, needsPlayer: false },
@@ -81,7 +82,7 @@ function CinemaCategorySection({
     { type: 'relegated', label: isVeterano ? '1º Eliminado 1ª Fase' : 'Eliminado 1ª Fase', points: 10, needsTeam: true, needsPlayer: false },
     { type: 'relegated_2', label: '2º Eliminado 1ª Fase', points: 10, needsTeam: true, needsPlayer: false },
     { type: 'top_scorer', label: 'Artilheiro', points: 15, needsTeam: false, needsPlayer: true },
-  ].filter(bt => {
+  ] satisfies BetTypeDef[]).filter(bt => {
     if (isLivre && (bt.type === 'third_place' || bt.type === 'third_place_cinema')) return false
     if (!isVeterano && (bt.type === 'relegated_cinema_2' || bt.type === 'relegated_2')) return false
     return true
