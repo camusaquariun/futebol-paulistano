@@ -75,13 +75,12 @@ function CinemaCategorySection({
     { type: 'third_place_cinema', label: '🎬 3º Colocado Cinema', points: 10, needsTeam: true, needsPlayer: false },
     { type: 'relegated_cinema', label: isVeterano ? '🎬 1º Eliminado 1ª Fase Cinema' : '🎬 Eliminado 1ª Fase Cinema', points: 20, needsTeam: true, needsPlayer: false },
     { type: 'relegated_cinema_2', label: '🎬 2º Eliminado 1ª Fase Cinema', points: 20, needsTeam: true, needsPlayer: false },
-    { type: 'top_scorer_cinema', label: '🎬 Artilheiro Cinema', points: 30, needsTeam: false, needsPlayer: true },
+    { type: 'top_scorer_cinema', label: '🎬 Artilheiro Cinema', points: 15, needsTeam: false, needsPlayer: true },
     { type: 'champion', label: 'Campeão', points: 25, needsTeam: true, needsPlayer: false },
     { type: 'runner_up', label: 'Vice-campeão', points: 10, needsTeam: true, needsPlayer: false },
     { type: 'third_place', label: '3º Lugar', points: 5, needsTeam: true, needsPlayer: false },
     { type: 'relegated', label: isVeterano ? '1º Eliminado 1ª Fase' : 'Eliminado 1ª Fase', points: 10, needsTeam: true, needsPlayer: false },
     { type: 'relegated_2', label: '2º Eliminado 1ª Fase', points: 10, needsTeam: true, needsPlayer: false },
-    { type: 'top_scorer', label: 'Artilheiro', points: 15, needsTeam: false, needsPlayer: true },
   ] satisfies BetTypeDef[]).filter(bt => {
     if (isLivre && (bt.type === 'third_place' || bt.type === 'third_place_cinema')) return false
     if (!isVeterano && (bt.type === 'relegated_cinema_2' || bt.type === 'relegated_2')) return false
