@@ -35,8 +35,9 @@ const cinemaDeadlineLabel = '18/05/2026, 19:00 (Brasília) — 1h antes do 1º j
 const extrasDeadlineLabel = '30/08/2026, 23:59 (Brasília)'
 const isCinemaOpen = () => Date.now() < CINEMA_DEADLINE_MS
 const isExtrasOpen = () => Date.now() < EXTRAS_DEADLINE_MS
-const isBetOpen = (betType: string) => betType.endsWith('_cinema') ? isCinemaOpen() : isExtrasOpen()
-const deadlineLabelFor = (betType: string) => betType.endsWith('_cinema') ? cinemaDeadlineLabel : extrasDeadlineLabel
+const isCinemaBet = (betType: string) => betType.includes('_cinema')
+const isBetOpen = (betType: string) => isCinemaBet(betType) ? isCinemaOpen() : isExtrasOpen()
+const deadlineLabelFor = (betType: string) => isCinemaBet(betType) ? cinemaDeadlineLabel : extrasDeadlineLabel
 
 interface CinemaCategorySectionProps {
   category: Category
@@ -99,7 +100,7 @@ function CinemaCategorySection({
             const existing = mySeasonBetMap.get(key)
             const localValue = cinemaBets[key]
             const isSaving = savingCinema === key
-            const isCinema = bt.type.endsWith('_cinema')
+            const isCinema = isCinemaBet(bt.type)
             const open = isBetOpen(bt.type)
             // Cinema bets used to be permanently locked once placed.
             // Now they're editable up to the cinema deadline (1h before the 1st match).
@@ -412,7 +413,7 @@ export default function Pool() {
       alert('Você ainda não foi habilitado para apostar. Solicite acesso ao administrador.')
       return
     }
-    const isCinema = betType.endsWith('_cinema')
+    const isCinema = isCinemaBet(betType)
     if (!isBetOpen(betType)) {
       alert(`Apostas encerradas em ${deadlineLabelFor(betType)}.`)
       return

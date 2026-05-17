@@ -14,6 +14,7 @@ export default function Login() {
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [name, setName] = useState('')
+  const [phone, setPhone] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -62,7 +63,7 @@ export default function Login() {
       email,
       password,
       options: {
-        data: { display_name: name },
+        data: { display_name: name, phone: phone.trim() || null },
       },
     })
 
@@ -123,6 +124,7 @@ export default function Login() {
     setPassword('')
     setConfirmPassword('')
     setName('')
+    setPhone('')
     setError(null)
     setSuccess(null)
   }
@@ -247,6 +249,20 @@ export default function Login() {
                 required
               />
             </div>
+
+            {mode === 'register' && (
+              <div className="space-y-2">
+                <Label htmlFor="phone">Celular</Label>
+                <Input
+                  id="phone"
+                  type="tel"
+                  value={phone}
+                  onChange={e => setPhone(e.target.value)}
+                  placeholder="(11) 99999-9999"
+                  required
+                />
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="password">Senha</Label>
