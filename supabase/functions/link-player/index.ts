@@ -29,10 +29,19 @@ Deno.serve(async (req: Request) => {
   const { action, email, player_id } = body;
 
   if (action === 'list-users') {
-    const { data: { users }, error } = await supabaseAdmin.auth.admin.listUsers();
-    if (error) return jsonResponse({ error: error.message }, 400);
-
-    const safeUsers = users.map(u => ({
+    const all: any[] = [];
+    let page = 1;
+    const perPage = 1000;
+    while (true) {
+      const { data, error } = await supabaseAdmin.auth.admin.listUsers({ page, perPage });
+      if (error) return jsonResponse({ error: error.message }, 400);
+      const batch = data.users ?? [];
+      all.push(...batch);
+      if (batch.length < perPage) break;
+      page += 1;
+      if (page > 50) break; // hard cap, 50k users
+    }
+    const safeUsers = all.map(u => ({
       id: u.id,
       email: u.email,
       display_name: u.user_metadata?.display_name || null,
@@ -79,9 +88,20 @@ Deno.serve(async (req: Request) => {
   }
 
   if (action === 'link') {
-    const { data: { users }, error: userErr } = await supabaseAdmin.auth.admin.listUsers();
-    if (userErr) return jsonResponse({ error: userErr.message }, 400);
-    const user = users.find(u => u.email === email);
+    // Paginate through all users to find the email (default page size is 50)
+    let user: any = null;
+    let page = 1;
+    const perPage = 1000;
+    while (true) {
+      const { data, error: userErr } = await supabaseAdmin.auth.admin.listUsers({ page, perPage });
+      if (userErr) return jsonResponse({ error: userErr.message }, 400);
+      const batch = data.users ?? [];
+      user = batch.find((u: any) => u.email === email);
+      if (user) break;
+      if (batch.length < perPage) break;
+      page += 1;
+      if (page > 50) break;
+    }
     if (!user) return jsonResponse({ error: 'Usuário não encontrado com este email' }, 404);
 
     const { error } = await supabaseAdmin.from('players').update({ user_id: user.id }).eq('id', player_id);
