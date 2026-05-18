@@ -649,7 +649,7 @@ export default function Pool() {
                       const existing = myBetMap.get(match.id)
                       const editing = editingBets[match.id]
                       const isEditing = !!editing
-                      const canBet = canBetOnMatch(match.match_date)
+                      const canBet = canBetOnMatch(match.match_date, match.round)
                       const isFinished = match.status === 'finished'
                       const isSaving = savingMatch === match.id
 
