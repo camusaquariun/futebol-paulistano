@@ -128,19 +128,23 @@ export function buildLeaderboard(
   return entries
 }
 
-/** Check if betting is still open for a match (1h before kickoff, Brasilia time) */
-export function canBetOnMatch(matchDate: string | null): boolean {
-  if (!matchDate) return false
+// Round 1 has a special exception: bets accepted up to kickoff (no -1h margin)
+// because the first round had a delayed roster + bolão setup.
+function betDeadlineMs(matchDate: string, round: number | null | undefined): number {
   const kickoff = new Date(matchDate).getTime()
-  const deadline = kickoff - 60 * 60 * 1000 // 1 hour before
-  return Date.now() < deadline
+  return round === 1 ? kickoff : kickoff - 60 * 60 * 1000
+}
+
+/** Check if betting is still open for a match (1h before kickoff, or kickoff for round 1). */
+export function canBetOnMatch(matchDate: string | null, round?: number | null): boolean {
+  if (!matchDate) return false
+  return Date.now() < betDeadlineMs(matchDate, round)
 }
 
 /** Human-readable deadline */
-export function betDeadlineLabel(matchDate: string | null): string {
+export function betDeadlineLabel(matchDate: string | null, round?: number | null): string {
   if (!matchDate) return 'Data não definida'
-  const deadline = new Date(new Date(matchDate).getTime() - 60 * 60 * 1000)
-  return deadline.toLocaleString('pt-BR', {
+  return new Date(betDeadlineMs(matchDate, round)).toLocaleString('pt-BR', {
     day: '2-digit',
     month: '2-digit',
     hour: '2-digit',

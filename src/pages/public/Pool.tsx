@@ -255,7 +255,7 @@ export default function Pool() {
   useMemo(() => {
     if (expandedRound) return
     for (const [key, matches] of matchesByRound) {
-      if (matches.some(m => canBetOnMatch(m.match_date))) {
+      if (matches.some(m => canBetOnMatch(m.match_date, m.round))) {
         setExpandedRound(key)
         return
       }
@@ -615,7 +615,7 @@ export default function Pool() {
           )}
           {Array.from(matchesByRound.entries()).map(([roundKey, matches]) => {
             const isExpanded = expandedRound === roundKey
-            const bettableCount = matches.filter(m => canBetOnMatch(m.match_date)).length
+            const bettableCount = matches.filter(m => canBetOnMatch(m.match_date, m.round)).length
             const bettedCount = matches.filter(m => myBetMap.has(m.id)).length
 
             return (
@@ -678,7 +678,7 @@ export default function Pool() {
                             </div>
                             <div className="text-[10px] text-slate-500">
                               {canBet ? (
-                                <span>Aposte até {betDeadlineLabel(match.match_date)}</span>
+                                <span>Aposte até {betDeadlineLabel(match.match_date, match.round)}</span>
                               ) : isFinished ? (
                                 'Encerrado'
                               ) : (
