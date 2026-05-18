@@ -383,7 +383,9 @@ export default function Pool() {
     const key = `${p.categoryId}_${p.betType}`
     setSavingCinema(key)
     try {
+      const existing = mySeasonBetMap.get(key)
       await saveSeasonBet.mutateAsync({
+        id: existing?.id,
         user_id: user.id,
         championship_id: championship.id,
         category_id: p.categoryId,
