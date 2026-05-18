@@ -128,6 +128,15 @@ export function usePlayersByChampionship(championshipId: string | undefined) {
           category_name: pt.category?.name ?? '?',
         })
       }
+      // Also include "orphan" players: linked to a user but with no team yet,
+      // so admins can spot them and re-link to a team.
+      const { data: orphans } = await supabase
+        .from('players')
+        .select('id, name, photo_url, user_id')
+        .not('user_id', 'is', null)
+      for (const p of orphans ?? []) {
+        if (!map.has(p.id)) map.set(p.id, { ...p, links: [] })
+      }
       // Fetch linked user emails
       const userIds = [...new Set(Array.from(map.values()).map((p: any) => p.user_id).filter(Boolean))]
       if (userIds.length > 0) {
