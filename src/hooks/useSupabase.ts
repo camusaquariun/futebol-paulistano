@@ -464,22 +464,43 @@ export function useDeleteTeam() {
 export function useSavePlayer() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async ({ player, teams }: { player: Partial<Player>; teams: { team_id: string; category_id: string }[] }) => {
+    // teams === undefined ⇒ keep existing player_teams untouched.
+    // teams === []        ⇒ remove all existing player_teams.
+    // teams populated     ⇒ replace existing set with this one.
+    mutationFn: async ({ player, teams }: { player: Partial<Player>; teams?: { team_id: string; category_id: string }[] }) => {
       let playerId = player.id
       if (playerId) {
         const { error } = await supabase.from('players').update({ name: player.name }).eq('id', playerId)
         if (error) throw error
-        await supabase.from('player_teams').delete().eq('player_id', playerId)
       } else {
         const { data, error } = await supabase.from('players').insert({ name: player.name }).select().single()
         if (error) throw error
         playerId = data.id
       }
-      if (teams.length > 0) {
-        const { error } = await supabase.from('player_teams').insert(
-          teams.map(t => ({ player_id: playerId!, team_id: t.team_id, category_id: t.category_id }))
-        )
-        if (error) throw error
+
+      // Only touch player_teams when the caller explicitly opts in.
+      if (teams !== undefined) {
+        // Diff: keep rows the caller still wants, remove rows it dropped,
+        // insert rows that are new. Preserves jersey_number/is_captain/positions.
+        const { data: current } = await supabase
+          .from('player_teams')
+          .select('id, team_id, category_id')
+          .eq('player_id', playerId!)
+        const currentSet = new Set((current ?? []).map((r: any) => `${r.team_id}|${r.category_id}`))
+        const wantSet = new Set(teams.map(t => `${t.team_id}|${t.category_id}`))
+
+        const toDelete = (current ?? []).filter((r: any) => !wantSet.has(`${r.team_id}|${r.category_id}`))
+        if (toDelete.length > 0) {
+          await supabase.from('player_teams').delete().in('id', toDelete.map((r: any) => r.id))
+        }
+
+        const toInsert = teams.filter(t => !currentSet.has(`${t.team_id}|${t.category_id}`))
+        if (toInsert.length > 0) {
+          const { error } = await supabase.from('player_teams').insert(
+            toInsert.map(t => ({ player_id: playerId!, team_id: t.team_id, category_id: t.category_id }))
+          )
+          if (error) throw error
+        }
       }
     },
     onSuccess: () => {

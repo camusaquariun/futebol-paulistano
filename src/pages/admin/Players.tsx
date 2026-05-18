@@ -46,7 +46,10 @@ export default function PlayersAdmin() {
   const openEdit = (player: Player) => {
     setEditing(player)
     setName(player.name)
-    setAssignments([])
+    // Pre-fill with the player's current team/category links so editing the
+    // name (or anything else) doesn't accidentally wipe them.
+    const existing = ((player as any).links ?? []) as { team_id: string; category_id: string }[]
+    setAssignments(existing.map(l => ({ team_id: l.team_id, category_id: l.category_id })))
     setOpen(true)
   }
 
