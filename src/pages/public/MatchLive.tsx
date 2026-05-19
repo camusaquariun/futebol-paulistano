@@ -94,7 +94,7 @@ export default function MatchLive() {
         .order('created_at', { ascending: false })
         .limit(50)
       if (error) throw error
-      return data as { id: string; user_email: string; message: string; created_at: string }[]
+      return data as { id: string; user_id: string; user_email: string; message: string; created_at: string }[]
     },
     enabled: !!matchId,
     refetchInterval: 5000,
@@ -164,15 +164,36 @@ export default function MatchLive() {
   // Bolão bets for this match
   const { data: poolBets } = usePoolMatchBetsByMatch(matchId)
 
+  // Map user_id -> display_name (via edge function)
+  const { data: authUsersList } = useQuery({
+    queryKey: ['auth_users_for_pool'],
+    queryFn: async () => {
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/link-player`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'list-users' }),
+      })
+      const d = await res.json()
+      return (d.users ?? []) as { id: string; email: string; display_name: string | null }[]
+    },
+    enabled: !!poolBets && poolBets.length > 0,
+  })
+  const displayNameByUserId = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const u of authUsersList ?? []) m.set(u.id, u.display_name || u.email.split('@')[0])
+    return m
+  }, [authUsersList])
+
   const poolStats = useMemo(() => {
     if (!poolBets || poolBets.length === 0 || match?.home_score == null || match?.away_score == null) {
       return null
     }
     const betsWithPts = poolBets.map(bet => {
       const pts = calculateMatchPoints(bet.home_score, bet.away_score, match.home_score!, match.away_score!)
-      const name = bet.user_email.includes('@bolao.demo')
-        ? bet.user_email.split('@')[0].replace(/\./g, ' ').replace(/\b\w/g, c => c.toUpperCase())
-        : bet.user_email.split('@')[0]
+      const name = displayNameByUserId.get(bet.user_id)
+        ?? (bet.user_email?.includes('@bolao.demo')
+              ? bet.user_email.split('@')[0].replace(/\./g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+              : bet.user_email?.split('@')[0] ?? 'Anônimo')
       return { ...bet, pts, name }
     }).sort((a, b) => b.pts - a.pts)
 
@@ -182,7 +203,7 @@ export default function MatchLive() {
     const top5 = betsWithPts.slice(0, 5)
 
     return { total: poolBets.length, exactCount, scoringCount, lostCount, top5 }
-  }, [poolBets, match?.home_score, match?.away_score])
+  }, [poolBets, match?.home_score, match?.away_score, displayNameByUserId])
 
   // Voting state
   const votingOpen = match?.voting_open === true
@@ -868,7 +889,7 @@ export default function MatchLive() {
                       <div key={msg.id} className="bg-slate-800/40 rounded-lg px-3 py-2">
                         <div className="flex items-center justify-between gap-2">
                           <span className="text-xs font-semibold text-pitch-400 truncate">
-                            {msg.user_email.split('@')[0]}
+                            {displayNameByUserId.get(msg.user_id) ?? msg.user_email.split('@')[0]}
                           </span>
                           <span className="text-[10px] text-slate-600 flex-shrink-0">
                             {new Date(msg.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}

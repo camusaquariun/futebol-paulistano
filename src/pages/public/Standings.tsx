@@ -63,16 +63,26 @@ function CategoryHighlights({ categoryId }: { categoryId: string }) {
     queryKey: ['top_motm', championship?.id, categoryId],
     queryFn: async () => {
       const { data } = await supabase.from('matches')
-        .select('motm_player_id, motm_player:players!matches_motm_player_id_fkey(name)')
+        .select('motm_player_id, motm_player:players!matches_motm_player_id_fkey(name), home_team:teams!matches_home_team_id_fkey(id, name), away_team:teams!matches_away_team_id_fkey(id, name)')
         .eq('championship_id', championship!.id)
         .eq('category_id', categoryId)
         .eq('status', 'finished')
         .not('motm_player_id', 'is', null)
       if (!data) return []
-      const counts: Record<string, { name: string; count: number }> = {}
+      // For each MOTM, look up their team via player_teams for this category
+      const motmPlayerIds = [...new Set((data as any[]).map(m => m.motm_player_id))]
+      const { data: links } = motmPlayerIds.length > 0
+        ? await supabase.from('player_teams')
+            .select('player_id, team:teams(name)')
+            .in('player_id', motmPlayerIds)
+            .eq('category_id', categoryId)
+        : { data: [] }
+      const teamByPlayer = new Map<string, string>()
+      for (const l of (links ?? []) as any[]) teamByPlayer.set(l.player_id, l.team?.name ?? '?')
+      const counts: Record<string, { name: string; team: string; count: number }> = {}
       for (const m of data as any[]) {
         const pid = m.motm_player_id
-        if (!counts[pid]) counts[pid] = { name: m.motm_player?.name ?? '?', count: 0 }
+        if (!counts[pid]) counts[pid] = { name: m.motm_player?.name ?? '?', team: teamByPlayer.get(pid) ?? '', count: 0 }
         counts[pid].count++
       }
       return Object.values(counts).sort((a, b) => b.count - a.count).slice(0, 5)
@@ -85,15 +95,15 @@ function CategoryHighlights({ categoryId }: { categoryId: string }) {
     queryKey: ['top_donors_cards', championship?.id, categoryId],
     queryFn: async () => {
       const { data } = await supabase.from('match_events')
-        .select('player_id, event_type, player:players(name), match:matches!inner(championship_id, category_id)')
+        .select('player_id, event_type, player:players(name), team:teams(name), match:matches!inner(championship_id, category_id)')
         .in('event_type', ['yellow_card', 'red_card'])
         .eq('match.championship_id', championship!.id)
         .eq('match.category_id', categoryId)
       if (!data) return []
-      const totals: Record<string, { name: string; kg: number }> = {}
+      const totals: Record<string, { name: string; team: string; kg: number }> = {}
       for (const e of data as any[]) {
         const pid = e.player_id
-        if (!totals[pid]) totals[pid] = { name: e.player?.name ?? '?', kg: 0 }
+        if (!totals[pid]) totals[pid] = { name: e.player?.name ?? '?', team: e.team?.name ?? '?', kg: 0 }
         totals[pid].kg += e.event_type === 'yellow_card' ? 5 : 15
       }
       return Object.values(totals).sort((a, b) => b.kg - a.kg).slice(0, 5)
@@ -133,7 +143,7 @@ function CategoryHighlights({ categoryId }: { categoryId: string }) {
               <div className="space-y-1">
                 {topMotm.map((p, i) => (
                   <div key={i} className="flex items-center justify-between text-xs">
-                    <span className="text-slate-300 truncate">{i + 1}. {p.name}</span>
+                    <span className="text-slate-300 truncate">{i + 1}. {p.name}{p.team && <span className="text-slate-500"> ({p.team})</span>}</span>
                     <span className="text-amber-400 font-bold flex-shrink-0 ml-1">{p.count}⭐</span>
                   </div>
                 ))}
@@ -151,7 +161,7 @@ function CategoryHighlights({ categoryId }: { categoryId: string }) {
               <div className="space-y-1">
                 {top5Scorers.map((s, i) => (
                   <div key={i} className="flex items-center justify-between text-xs">
-                    <span className="text-slate-300 truncate">{i + 1}. {s.player_name}</span>
+                    <span className="text-slate-300 truncate">{i + 1}. {s.player_name} <span className="text-slate-500">({s.team_name})</span></span>
                     <span className="text-gold-400 font-bold flex-shrink-0 ml-1">{s.goals}⚽</span>
                   </div>
                 ))}
@@ -210,7 +220,7 @@ function CategoryHighlights({ categoryId }: { categoryId: string }) {
                 <div className="space-y-1">
                   {topYellows.map((p, i) => (
                     <div key={i} className="flex items-center justify-between text-xs">
-                      <span className="text-slate-300 truncate">{i + 1}. {p.name}</span>
+                      <span className="text-slate-300 truncate">{i + 1}. {p.name} <span className="text-slate-500">({p.team})</span></span>
                       <span className="text-yellow-400 font-bold">{p.count}🟨</span>
                     </div>
                   ))}
@@ -228,7 +238,7 @@ function CategoryHighlights({ categoryId }: { categoryId: string }) {
                 <div className="space-y-1">
                   {topReds.map((p, i) => (
                     <div key={i} className="flex items-center justify-between text-xs">
-                      <span className="text-slate-300 truncate">{i + 1}. {p.name}</span>
+                      <span className="text-slate-300 truncate">{i + 1}. {p.name} <span className="text-slate-500">({p.team})</span></span>
                       <span className="text-red-400 font-bold">{p.count}🟥</span>
                     </div>
                   ))}
@@ -246,7 +256,7 @@ function CategoryHighlights({ categoryId }: { categoryId: string }) {
                 <div className="space-y-1">
                   {topDonors.map((p, i) => (
                     <div key={i} className="flex items-center justify-between text-xs">
-                      <span className="text-slate-300 truncate">{i + 1}. {p.name}</span>
+                      <span className="text-slate-300 truncate">{i + 1}. {p.name} <span className="text-slate-500">({p.team})</span></span>
                       <span className="text-orange-400 font-bold">{p.kg}kg</span>
                     </div>
                   ))}
