@@ -450,7 +450,7 @@ function StandingsTable({ categoryId }: { categoryId: string }) {
         </TableHeader>
         <TableBody>
           {merged.map((team, idx) => {
-            const qualified = idx < qualifyCount && team.matches_played > 0
+            const qualified = idx < qualifyCount
             const isLast = idx === merged.length - 1 && merged.length > 1
             return (
               <TableRow
