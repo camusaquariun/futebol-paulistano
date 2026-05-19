@@ -576,6 +576,68 @@ function ScenariosTab({
               onOrientationChange={handleOrientationChange}
             />
 
+            {/* Titulares + Reservas (Meu time) */}
+            <div className="bg-navy-900/50 border border-navy-700 rounded-lg p-3 mt-3">
+              <h4 className="text-xs font-semibold text-blue-400 mb-2">
+                {myTeamData?.name} — Titulares ({homePlayers.length}/7)
+              </h4>
+              <div className="space-y-1 mb-3">
+                {homePlayers.map(p => (
+                  <div key={p.id} className="flex items-center gap-2 text-xs bg-blue-900/10 rounded-lg px-2 py-1.5">
+                    <div className="h-5 w-5 rounded-full flex items-center justify-center text-[9px] font-bold flex-shrink-0"
+                      style={{ backgroundColor: (myTeamData as any)?.primary_color ?? homeColor, color: (myTeamData as any)?.secondary_color ?? '#fff' }}>
+                      {p.jerseyNumber ?? '?'}
+                    </div>
+                    <span className="text-slate-300 truncate flex-1">{p.label}</span>
+                    {homePlayers.length > 1 && (
+                      <button onClick={() => setHomePlayers(prev => prev.filter(hp => hp.id !== p.id))}
+                        className="text-[10px] text-red-400/60 hover:text-red-400 transition-colors"
+                        title="Mover para reserva">
+                        ↓ Banco
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+              {(() => {
+                const starterIds = new Set(homePlayers.map(p => p.playerId).filter(Boolean))
+                const reserves = (myRoster ?? []).filter((pt: any) => !starterIds.has(pt.player_id))
+                if (reserves.length === 0) return null
+                return (
+                  <>
+                    <h4 className="text-xs font-semibold text-slate-500 mb-1.5">Reservas ({reserves.length})</h4>
+                    <div className="space-y-1">
+                      {reserves.map((pt: any) => (
+                        <div key={pt.id} className="flex items-center gap-2 text-xs bg-navy-800/50 rounded-lg px-2 py-1.5">
+                          <div className="h-5 w-5 rounded-full bg-navy-600 flex items-center justify-center text-slate-400 text-[9px] font-bold flex-shrink-0">
+                            {pt.jersey_number ?? '?'}
+                          </div>
+                          <span className="text-slate-500 truncate flex-1">{pt.player?.name}</span>
+                          {homePlayers.length < 7 ? (
+                            <button onClick={() => {
+                              const newPlayer = {
+                                id: `home-${pt.id}`,
+                                label: pt.player?.name ?? '?',
+                                jerseyNumber: pt.jersey_number,
+                                x: 50, y: 50,
+                                side: 'home' as const,
+                                playerId: pt.player_id,
+                              }
+                              setHomePlayers(prev => [...prev, newPlayer])
+                            }} className="text-[10px] text-pitch-400 hover:text-pitch-300 transition-colors font-medium">
+                              ↑ Escalar
+                            </button>
+                          ) : (
+                            <span className="text-[10px] text-slate-600">Time cheio</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )
+              })()}
+            </div>
+
             {saveError && (
               <div className="text-red-400 text-xs bg-red-400/10 rounded-lg px-3 py-2">{saveError}</div>
             )}
