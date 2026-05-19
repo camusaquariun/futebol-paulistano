@@ -44,6 +44,62 @@ function formatDateLabel(date: string): string {
   return `${day}, ${d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}`
 }
 
+// Searchable combobox for MOTM player selection.
+function MotmCombobox({ players, homeName, awayName, homeId, value, onChange }: {
+  players: { id: string; name: string; jersey_number: number | null; teamId: string }[]
+  homeName?: string
+  awayName?: string
+  homeId?: string
+  value: string
+  onChange: (id: string) => void
+}) {
+  const [query, setQuery] = useState('')
+  const [open, setOpen] = useState(false)
+  const selected = players.find(p => p.id === value)
+  const norm = (s: string) => s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase()
+  const q = norm(query)
+  const filtered = q
+    ? players.filter(p => norm(p.name).includes(q) || (p.jersey_number != null && String(p.jersey_number).includes(q)))
+    : players
+  const labelFor = (p: { name: string; jersey_number: number | null; teamId: string }) =>
+    `${p.jersey_number != null ? p.jersey_number + ' - ' : ''}${p.name} (${p.teamId === homeId ? homeName : awayName})`
+  return (
+    <div className="relative">
+      <Label className="text-slate-400 text-xs mb-2 block">Destaque do Jogo</Label>
+      <Input
+        value={open ? query : (selected ? labelFor(selected) : '')}
+        onFocus={() => { setQuery(''); setOpen(true) }}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onChange={e => { setQuery(e.target.value); setOpen(true) }}
+        placeholder="Digite para buscar um jogador..."
+        className="bg-navy-700 border-navy-600"
+      />
+      {selected && !open && (
+        <button type="button" onClick={() => onChange('')}
+          className="absolute right-2 top-9 text-slate-400 hover:text-white text-xs">✕</button>
+      )}
+      {open && (
+        <div className="absolute z-10 left-0 right-0 mt-1 bg-navy-800 border border-navy-700 rounded-lg shadow-lg max-h-64 overflow-y-auto">
+          <button type="button"
+            onMouseDown={() => { onChange(''); setOpen(false) }}
+            className="w-full text-left px-3 py-1.5 text-xs text-slate-400 hover:bg-navy-700">
+            — Nenhum —
+          </button>
+          {filtered.length === 0 ? (
+            <p className="px-3 py-2 text-xs text-slate-500">Nenhum jogador encontrado</p>
+          ) : filtered.map(p => (
+            <button key={p.id} type="button"
+              onMouseDown={() => { onChange(p.id); setOpen(false) }}
+              className={`w-full text-left px-3 py-1.5 text-sm hover:bg-navy-700 ${value === p.id ? 'bg-pitch-600/20 text-pitch-300' : 'text-white'}`}>
+              {labelFor(p)}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function MatchesAdmin() {
   const { selectedId: championshipId, selected: championship } = useAdminChampionship()
   const { data: categories } = useCategories()
@@ -115,17 +171,26 @@ export default function MatchesAdmin() {
   const [qfMatch, setQfMatch] = useState<any>(null)
   const [qfHomeScore, setQfHomeScore] = useState(0)
   const [qfAwayScore, setQfAwayScore] = useState(0)
-  const [qfHomeFouls1h, setQfHomeFouls1h] = useState(0)
-  const [qfAwayFouls1h, setQfAwayFouls1h] = useState(0)
-  const [qfHomeFouls2h, setQfHomeFouls2h] = useState(0)
-  const [qfAwayFouls2h, setQfAwayFouls2h] = useState(0)
+  const [qfHomeFouls, setQfHomeFouls] = useState(0)
+  const [qfAwayFouls, setQfAwayFouls] = useState(0)
   const [qfMotm, setQfMotm] = useState('')
-  const [qfEvents, setQfEvents] = useState<Array<{ team_id: string; event_type: string; player_id: string; minute: number; half: number }>>([])
-  const [qfNewTeam, setQfNewTeam] = useState('')
-  const [qfNewType, setQfNewType] = useState<'goal' | 'own_goal' | 'yellow_card' | 'red_card'>('goal')
-  const [qfNewPlayer, setQfNewPlayer] = useState('')
-  const [qfNewMinute, setQfNewMinute] = useState('')
-  const [qfNewHalf, setQfNewHalf] = useState(1)
+  // Per-player stat tally for quick finalize
+  // Map: player_id -> { goals, yellow, red }
+  const [qfPlayerStats, setQfPlayerStats] = useState<Record<string, { goals: number; yellow: number; red: number }>>({})
+  const [qfOwnGoalsHome, setQfOwnGoalsHome] = useState(0)
+  const [qfOwnGoalsAway, setQfOwnGoalsAway] = useState(0)
+  // Referees: 1 table + up to 2 field
+  const [qfRefTable, setQfRefTable] = useState('')
+  const [qfRefField1, setQfRefField1] = useState('')
+  const [qfRefField2, setQfRefField2] = useState('')
+
+  const { data: qfReferees } = useQuery({
+    queryKey: ['referees_list'],
+    queryFn: async () => {
+      const { data } = await supabase.from('referees').select('id, name, roles').order('name')
+      return (data ?? []) as { id: string; name: string; roles: string[] | null }[]
+    },
+  })
   const [qfSaving, setQfSaving] = useState(false)
   const [qfPresentPlayers, setQfPresentPlayers] = useState<Set<string>>(new Set())
   const [qfRosterLoaded, setQfRosterLoaded] = useState(false)
@@ -425,78 +490,113 @@ export default function MatchesAdmin() {
     queryClient.invalidateQueries({ queryKey: ['match_goals_bulk'] })
   }
 
-  const openQuickFinalize = (match: any) => {
+  const openQuickFinalize = async (match: any) => {
     setQfMatch(match)
     setQfHomeScore(0)
     setQfAwayScore(0)
-    setQfHomeFouls1h(0)
-    setQfAwayFouls1h(0)
-    setQfHomeFouls2h(0)
-    setQfAwayFouls2h(0)
+    setQfHomeFouls(0)
+    setQfAwayFouls(0)
     setQfMotm('')
-    setQfEvents([])
-    setQfNewTeam(match.home_team_id)
-    setQfNewType('goal')
-    setQfNewPlayer('')
-    setQfNewMinute('')
-    setQfNewHalf(1)
+    setQfPlayerStats({})
+    setQfOwnGoalsHome(0)
+    setQfOwnGoalsAway(0)
     setQfPresentPlayers(new Set())
     setQfRosterLoaded(false)
+    // Pre-load existing referees for this match
+    setQfRefTable(''); setQfRefField1(''); setQfRefField2('')
+    const { data: existingRefs } = await supabase
+      .from('match_referees')
+      .select('referee_id, role')
+      .eq('match_id', match.id)
+    for (const r of existingRefs ?? []) {
+      if (r.role === 'table') setQfRefTable(r.referee_id)
+      else if (r.role === 'field_1') setQfRefField1(r.referee_id)
+      else if (r.role === 'field_2') setQfRefField2(r.referee_id)
+    }
     setQfOpen(true)
   }
 
-  const qfAddEvent = () => {
-    if (!qfNewMinute || !qfMatch) return
-    setQfEvents(prev => [...prev, {
-      team_id: qfNewTeam,
-      event_type: qfNewType,
-      player_id: qfNewType === 'own_goal' ? '' : qfNewPlayer,
-      minute: parseInt(qfNewMinute),
-      half: qfNewHalf,
-    }])
-    setQfNewPlayer('')
-    setQfNewMinute('')
+  const bumpPlayerStat = (playerId: string, key: 'goals' | 'yellow' | 'red', delta: number) => {
+    setQfPlayerStats(prev => {
+      const cur = prev[playerId] ?? { goals: 0, yellow: 0, red: 0 }
+      const next = { ...cur, [key]: Math.max(0, cur[key] + delta) }
+      return { ...prev, [playerId]: next }
+    })
   }
 
-  const qfRemoveEvent = (idx: number) => {
-    setQfEvents(prev => prev.filter((_, i) => i !== idx))
-  }
+  // Sum goals attributed to each team based on player stats + own goals.
+  // Own goals on side X count for the opposing team's score.
+  const qfGoalsAttributed = useMemo(() => {
+    let homeGoals = 0
+    let awayGoals = 0
+    for (const p of qfAllPlayers) {
+      const g = qfPlayerStats[p.id]?.goals ?? 0
+      if (p.teamId === qfMatch?.home_team_id) homeGoals += g
+      else if (p.teamId === qfMatch?.away_team_id) awayGoals += g
+    }
+    // own goal committed by home team -> point for away
+    awayGoals += qfOwnGoalsHome
+    homeGoals += qfOwnGoalsAway
+    return { home: homeGoals, away: awayGoals }
+  }, [qfPlayerStats, qfOwnGoalsHome, qfOwnGoalsAway, qfAllPlayers, qfMatch])
 
   const handleQuickFinalize = async () => {
     if (!qfMatch) return
+    if (qfGoalsAttributed.home !== qfHomeScore || qfGoalsAttributed.away !== qfAwayScore) {
+      alert(`Os gols atribuídos não batem com o placar.\n${qfMatch.home_team?.name}: ${qfGoalsAttributed.home}/${qfHomeScore}\n${qfMatch.away_team?.name}: ${qfGoalsAttributed.away}/${qfAwayScore}`)
+      return
+    }
     setQfSaving(true)
-    const totalHomeFouls = qfHomeFouls1h + qfHomeFouls2h
-    const totalAwayFouls = qfAwayFouls1h + qfAwayFouls2h
 
     // Update match
-    await supabase.from('matches').update({
+    const { error: matchErr } = await supabase.from('matches').update({
       status: 'finished',
       match_state: 'finished',
       home_score: qfHomeScore,
       away_score: qfAwayScore,
-      home_fouls: totalHomeFouls,
-      away_fouls: totalAwayFouls,
-      home_fouls_1h: qfHomeFouls1h,
-      away_fouls_1h: qfAwayFouls1h,
-      home_fouls_2h: qfHomeFouls2h,
-      away_fouls_2h: qfAwayFouls2h,
+      home_fouls: qfHomeFouls,
+      away_fouls: qfAwayFouls,
       motm_player_id: qfMotm || null,
       half_start_time: null,
     }).eq('id', qfMatch.id)
+    if (matchErr) { alert('Erro ao salvar partida: ' + matchErr.message); setQfSaving(false); return }
 
-    // Insert events
-    if (qfEvents.length > 0) {
-      await supabase.from('match_events').insert(
-        qfEvents.map(e => ({
-          match_id: qfMatch.id,
-          team_id: e.team_id,
-          event_type: e.event_type,
-          player_id: e.player_id || null,
-          minute: e.minute,
-          half: e.half,
-        }))
-      )
+    // Clear any previous events for this match, then re-insert based on per-player counts.
+    await supabase.from('match_events').delete().eq('match_id', qfMatch.id)
+
+    const events: any[] = []
+    for (const [playerId, stats] of Object.entries(qfPlayerStats)) {
+      const player = qfAllPlayers.find(p => p.id === playerId)
+      if (!player) continue
+      for (let i = 0; i < stats.goals; i++) {
+        events.push({ match_id: qfMatch.id, team_id: player.teamId, event_type: 'goal', player_id: playerId, minute: 0, half: 1 })
+      }
+      for (let i = 0; i < stats.yellow; i++) {
+        events.push({ match_id: qfMatch.id, team_id: player.teamId, event_type: 'yellow_card', player_id: playerId, minute: 0, half: 1 })
+      }
+      for (let i = 0; i < stats.red; i++) {
+        events.push({ match_id: qfMatch.id, team_id: player.teamId, event_type: 'red_card', player_id: playerId, minute: 0, half: 1 })
+      }
     }
+    // Own goals (no player)
+    for (let i = 0; i < qfOwnGoalsHome; i++) {
+      events.push({ match_id: qfMatch.id, team_id: qfMatch.home_team_id, event_type: 'own_goal', player_id: null, minute: 0, half: 1 })
+    }
+    for (let i = 0; i < qfOwnGoalsAway; i++) {
+      events.push({ match_id: qfMatch.id, team_id: qfMatch.away_team_id, event_type: 'own_goal', player_id: null, minute: 0, half: 1 })
+    }
+    if (events.length > 0) {
+      const { error: evErr } = await supabase.from('match_events').insert(events)
+      if (evErr) { alert('Erro ao salvar eventos: ' + evErr.message); setQfSaving(false); return }
+    }
+
+    // Save referees: replace existing assignments
+    await supabase.from('match_referees').delete().eq('match_id', qfMatch.id)
+    const refRows: any[] = []
+    if (qfRefTable)  refRows.push({ match_id: qfMatch.id, referee_id: qfRefTable,  role: 'table' })
+    if (qfRefField1) refRows.push({ match_id: qfMatch.id, referee_id: qfRefField1, role: 'field_1' })
+    if (qfRefField2) refRows.push({ match_id: qfMatch.id, referee_id: qfRefField2, role: 'field_2' })
+    if (refRows.length > 0) await supabase.from('match_referees').insert(refRows)
 
     // Save attendance
     await supabase.from('match_attendance').delete().eq('match_id', qfMatch.id)
@@ -862,7 +962,7 @@ export default function MatchesAdmin() {
 
       {/* Quick finalize dialog */}
       <Dialog open={qfOpen} onOpenChange={setQfOpen}>
-        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Zap className="h-5 w-5 text-gold-400" />
@@ -881,6 +981,9 @@ export default function MatchesAdmin() {
                     <span className="text-3xl font-extrabold text-white w-10 text-center">{qfHomeScore}</span>
                     <button onClick={() => setQfHomeScore(qfHomeScore + 1)} className="h-8 w-8 rounded bg-pitch-500/20 text-pitch-400 hover:bg-pitch-500/30 font-bold">+</button>
                   </div>
+                  <p className={`text-[10px] mt-1 ${qfGoalsAttributed.home === qfHomeScore ? 'text-pitch-400' : 'text-amber-400'}`}>
+                    {qfGoalsAttributed.home}/{qfHomeScore} atribuídos
+                  </p>
                 </div>
                 <span className="text-2xl text-slate-500 font-bold mt-5">×</span>
                 <div className="text-center">
@@ -890,212 +993,188 @@ export default function MatchesAdmin() {
                     <span className="text-3xl font-extrabold text-white w-10 text-center">{qfAwayScore}</span>
                     <button onClick={() => setQfAwayScore(qfAwayScore + 1)} className="h-8 w-8 rounded bg-pitch-500/20 text-pitch-400 hover:bg-pitch-500/30 font-bold">+</button>
                   </div>
+                  <p className={`text-[10px] mt-1 ${qfGoalsAttributed.away === qfAwayScore ? 'text-pitch-400' : 'text-amber-400'}`}>
+                    {qfGoalsAttributed.away}/{qfAwayScore} atribuídos
+                  </p>
                 </div>
               </div>
             </div>
 
-            {/* Fouls per half */}
+            {/* Fouls (single total per team) */}
             <div>
-              <Label className="text-slate-400 text-xs mb-2 block">Faltas</Label>
+              <Label className="text-slate-400 text-xs mb-2 block">Faltas (total)</Label>
               <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
+                <div className="space-y-1">
                   <p className="text-xs text-slate-500 text-center">{qfMatch?.home_team?.name}</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-1">
-                      <label className="text-[10px] text-slate-500 block text-center">1ºT</label>
-                      <Input type="number" min={0} value={qfHomeFouls1h} onChange={e => setQfHomeFouls1h(Math.max(0, +e.target.value))} className="text-center" />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] text-slate-500 block text-center">2ºT</label>
-                      <Input type="number" min={0} value={qfHomeFouls2h} onChange={e => setQfHomeFouls2h(Math.max(0, +e.target.value))} className="text-center" />
-                    </div>
-                  </div>
+                  <Input type="number" min={0} value={qfHomeFouls} onChange={e => setQfHomeFouls(Math.max(0, +e.target.value))} className="text-center" />
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-1">
                   <p className="text-xs text-slate-500 text-center">{qfMatch?.away_team?.name}</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-1">
-                      <label className="text-[10px] text-slate-500 block text-center">1ºT</label>
-                      <Input type="number" min={0} value={qfAwayFouls1h} onChange={e => setQfAwayFouls1h(Math.max(0, +e.target.value))} className="text-center" />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] text-slate-500 block text-center">2ºT</label>
-                      <Input type="number" min={0} value={qfAwayFouls2h} onChange={e => setQfAwayFouls2h(Math.max(0, +e.target.value))} className="text-center" />
-                    </div>
-                  </div>
+                  <Input type="number" min={0} value={qfAwayFouls} onChange={e => setQfAwayFouls(Math.max(0, +e.target.value))} className="text-center" />
                 </div>
               </div>
             </div>
 
-            {/* Player attendance */}
+            {/* Referees */}
+            <div>
+              <Label className="text-slate-400 text-xs mb-2 block">Arbitragem</Label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div>
+                  <label className="text-[10px] text-slate-500 mb-1 block">📋 Mesa</label>
+                  <select value={qfRefTable} onChange={e => setQfRefTable(e.target.value)}
+                    className="w-full bg-navy-700 border border-navy-600 rounded px-2 py-1.5 text-sm text-white">
+                    <option value="">— Selecione —</option>
+                    {(qfReferees ?? []).filter(r => !r.roles || r.roles.includes('table')).map(r => (
+                      <option key={r.id} value={r.id}>{r.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] text-slate-500 mb-1 block">⚽ Campo 1</label>
+                  <select value={qfRefField1} onChange={e => setQfRefField1(e.target.value)}
+                    className="w-full bg-navy-700 border border-navy-600 rounded px-2 py-1.5 text-sm text-white">
+                    <option value="">— Selecione —</option>
+                    {(qfReferees ?? []).filter(r => !r.roles || r.roles.includes('field')).filter(r => r.id !== qfRefField2).map(r => (
+                      <option key={r.id} value={r.id}>{r.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] text-slate-500 mb-1 block">⚽ Campo 2 (opcional)</label>
+                  <select value={qfRefField2} onChange={e => setQfRefField2(e.target.value)}
+                    className="w-full bg-navy-700 border border-navy-600 rounded px-2 py-1.5 text-sm text-white">
+                    <option value="">— Nenhum —</option>
+                    {(qfReferees ?? []).filter(r => !r.roles || r.roles.includes('field')).filter(r => r.id !== qfRefField1).map(r => (
+                      <option key={r.id} value={r.id}>{r.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Player attendance + per-player stats (combined) */}
             {qfAllPlayers.length > 0 && (
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <Label className="text-slate-400 text-xs">Presença ({qfPresentPlayers.size}/{qfAllPlayers.length})</Label>
+                  <Label className="text-slate-400 text-xs">
+                    Presença & Estatísticas ({qfPresentPlayers.size}/{qfAllPlayers.length})
+                  </Label>
                   <div className="flex gap-2">
-                    <button
-                      type="button"
+                    <button type="button"
                       onClick={() => setQfPresentPlayers(new Set(qfAllPlayers.map(p => p.id)))}
-                      className="text-[10px] text-pitch-400 hover:text-pitch-300"
-                    >
+                      className="text-[10px] text-pitch-400 hover:text-pitch-300">
                       Todos
                     </button>
                     <span className="text-slate-600 text-[10px]">·</span>
-                    <button
-                      type="button"
+                    <button type="button"
                       onClick={() => setQfPresentPlayers(new Set())}
-                      className="text-[10px] text-slate-400 hover:text-slate-300"
-                    >
+                      className="text-[10px] text-slate-400 hover:text-slate-300">
                       Nenhum
                     </button>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <p className="text-[10px] text-slate-500 font-medium mb-1">{qfMatch?.home_team?.name}</p>
-                    {(qfHomeRoster ?? []).map(pt => {
-                      const p = pt.player!
-                      return (
-                        <label key={p.id} className="flex items-center gap-2 cursor-pointer group">
-                          <input
-                            type="checkbox"
-                            checked={qfPresentPlayers.has(p.id)}
-                            onChange={() => toggleQfPresent(p.id)}
-                            className="accent-green-500"
-                          />
-                          <span className={`text-xs truncate ${qfPresentPlayers.has(p.id) ? 'text-white' : 'text-slate-500 line-through'}`}>
-                            {pt.jersey_number != null && <span className="text-slate-500 mr-1">#{pt.jersey_number}</span>}
-                            {p.name}
-                          </span>
-                        </label>
-                      )
-                    })}
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-[10px] text-slate-500 font-medium mb-1">{qfMatch?.away_team?.name}</p>
-                    {(qfAwayRoster ?? []).map(pt => {
-                      const p = pt.player!
-                      return (
-                        <label key={p.id} className="flex items-center gap-2 cursor-pointer group">
-                          <input
-                            type="checkbox"
-                            checked={qfPresentPlayers.has(p.id)}
-                            onChange={() => toggleQfPresent(p.id)}
-                            className="accent-green-500"
-                          />
-                          <span className={`text-xs truncate ${qfPresentPlayers.has(p.id) ? 'text-white' : 'text-slate-500 line-through'}`}>
-                            {pt.jersey_number != null && <span className="text-slate-500 mr-1">#{pt.jersey_number}</span>}
-                            {p.name}
-                          </span>
-                        </label>
-                      )
-                    })}
-                  </div>
+                <p className="text-[10px] text-slate-500 mb-2">
+                  Marque quem participou. Para os presentes, use os contadores − / + para gols (⚽), amarelos (🟨) e vermelhos (🟥).
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {[
+                    { teamId: qfMatch?.home_team_id, teamName: qfMatch?.home_team?.name, roster: qfHomeRoster, ownGoals: qfOwnGoalsHome, setOwnGoals: setQfOwnGoalsHome },
+                    { teamId: qfMatch?.away_team_id, teamName: qfMatch?.away_team?.name, roster: qfAwayRoster, ownGoals: qfOwnGoalsAway, setOwnGoals: setQfOwnGoalsAway },
+                  ].map(side => (
+                    <div key={side.teamId} className="bg-navy-800/40 border border-navy-700 rounded-lg p-2.5">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <p className="text-sm font-medium text-white">{side.teamName}</p>
+                        <div className="flex gap-3 text-[10px] text-slate-500">
+                          <span title="Gols">⚽</span>
+                          <span title="Cartões amarelos">🟨</span>
+                          <span title="Cartões vermelhos">🟥</span>
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        {(side.roster ?? []).map(pt => {
+                          const p = pt.player!
+                          const present = qfPresentPlayers.has(p.id)
+                          const stats = qfPlayerStats[p.id] ?? { goals: 0, yellow: 0, red: 0 }
+                          const isHomeSide = side.teamId === qfMatch?.home_team_id
+                          const teamScoreLimit = isHomeSide ? qfHomeScore : qfAwayScore
+                          const teamAttributed = isHomeSide ? qfGoalsAttributed.home : qfGoalsAttributed.away
+                          const goalAtLimit = teamAttributed >= teamScoreLimit
+                          const counter = (key: 'goals' | 'yellow' | 'red', color: string) => {
+                            const isGoal = key === 'goals'
+                            const plusDisabled = isGoal && goalAtLimit
+                            return (
+                              <div className="flex items-center gap-0.5">
+                                <button type="button"
+                                  onClick={() => bumpPlayerStat(p.id, key, -1)}
+                                  disabled={!present || stats[key] === 0}
+                                  className="w-6 h-6 rounded bg-slate-700 text-slate-400 hover:bg-slate-600 disabled:opacity-20 disabled:cursor-not-allowed text-xs font-bold">−</button>
+                                <span className={`w-5 text-center text-xs font-bold ${stats[key] > 0 ? color : 'text-slate-600'}`}>{stats[key]}</span>
+                                <button type="button"
+                                  onClick={() => { if (!present) toggleQfPresent(p.id); bumpPlayerStat(p.id, key, 1) }}
+                                  disabled={plusDisabled}
+                                  title={plusDisabled ? `Placar do time já é ${teamScoreLimit}` : ''}
+                                  className="w-6 h-6 rounded bg-slate-700 text-slate-300 hover:bg-pitch-600 disabled:opacity-20 disabled:cursor-not-allowed text-xs font-bold">+</button>
+                              </div>
+                            )
+                          }
+                          return (
+                            <div key={p.id} className={`flex items-center gap-2 py-1 px-1 rounded ${present ? '' : 'opacity-60'}`}>
+                              <input
+                                type="checkbox"
+                                checked={present}
+                                onChange={() => toggleQfPresent(p.id)}
+                                className="accent-green-500 flex-shrink-0"
+                              />
+                              <span className={`text-xs flex-1 truncate ${present ? 'text-white' : 'text-slate-500 line-through'}`}>
+                                {pt.jersey_number != null && <span className="text-slate-500 mr-1">#{pt.jersey_number}</span>}
+                                {p.name}
+                              </span>
+                              {counter('goals', 'text-pitch-400')}
+                              {counter('yellow', 'text-yellow-400')}
+                              {counter('red', 'text-red-400')}
+                            </div>
+                          )
+                        })}
+                        {(() => {
+                          // Own goals on side X count for the OPPOSING team's score.
+                          const isHomeSide = side.teamId === qfMatch?.home_team_id
+                          const oppLimit = isHomeSide ? qfAwayScore : qfHomeScore
+                          const oppAttributed = isHomeSide ? qfGoalsAttributed.away : qfGoalsAttributed.home
+                          const plusOwnDisabled = oppAttributed >= oppLimit
+                          return (
+                            <div className="flex items-center gap-2 py-1 pt-2 border-t border-navy-700">
+                              <span className="text-[10px] text-slate-500 flex-1">Gol contra (sem jogador)</span>
+                              <div className="flex items-center gap-0.5">
+                                <button type="button" onClick={() => side.setOwnGoals(Math.max(0, side.ownGoals - 1))}
+                                  disabled={side.ownGoals === 0}
+                                  className="w-6 h-6 rounded bg-slate-700 text-slate-400 hover:bg-slate-600 disabled:opacity-20 text-xs font-bold">−</button>
+                                <span className={`w-5 text-center text-xs font-bold ${side.ownGoals > 0 ? 'text-red-400' : 'text-slate-600'}`}>{side.ownGoals}</span>
+                                <button type="button" onClick={() => side.setOwnGoals(side.ownGoals + 1)}
+                                  disabled={plusOwnDisabled}
+                                  title={plusOwnDisabled ? `Placar adversário já é ${oppLimit}` : ''}
+                                  className="w-6 h-6 rounded bg-slate-700 text-slate-300 hover:bg-red-600 disabled:opacity-20 disabled:cursor-not-allowed text-xs font-bold">+</button>
+                              </div>
+                              <div className="w-[68px]"></div>
+                              <div className="w-[68px]"></div>
+                            </div>
+                          )
+                        })()}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
 
-            {/* Events list */}
-            <div>
-              <Label className="text-slate-400 text-xs mb-2 block">Eventos ({qfEvents.length})</Label>
-              {qfEvents.length > 0 && (
-                <div className="space-y-1 mb-3">
-                  {qfEvents.map((e, idx) => {
-                    const player = qfAllPlayers.find(p => p.id === e.player_id)
-                    const teamName = e.team_id === qfMatch?.home_team_id ? qfMatch?.home_team?.name : qfMatch?.away_team?.name
-                    return (
-                      <div key={idx} className="flex items-center gap-2 text-sm py-1.5 px-2 bg-navy-800/50 rounded">
-                        <span className="text-[10px] font-bold text-slate-500 bg-navy-700 rounded px-1.5 py-0.5 min-w-[48px] text-center">
-                          {e.half === 2 ? '2ºT' : '1ºT'} {e.minute}'
-                        </span>
-                        <span className="text-lg">
-                          {e.event_type === 'goal' && '⚽'}
-                          {e.event_type === 'own_goal' && '⚽'}
-                          {e.event_type === 'yellow_card' && '🟨'}
-                          {e.event_type === 'red_card' && '🟥'}
-                        </span>
-                        <span className="font-medium text-white flex-1 truncate">
-                          {e.event_type === 'own_goal' ? <span className="text-red-400">Gol Contra</span> : player?.name ?? '—'}
-                        </span>
-                        <span className="text-slate-500 text-xs">{teamName}</span>
-                        <button onClick={() => qfRemoveEvent(idx)} className="text-red-400/60 hover:text-red-400 p-1">
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-
-              {/* Add event form */}
-              <div className="bg-navy-800 rounded-lg p-3 space-y-2 border border-navy-700">
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-xs text-slate-400 mb-1 block">Time</label>
-                    <select value={qfNewTeam} onChange={e => setQfNewTeam(e.target.value)}
-                      className="w-full bg-navy-700 border border-navy-600 rounded px-2 py-1.5 text-sm text-white">
-                      <option value={qfMatch?.home_team_id}>{qfMatch?.home_team?.name}</option>
-                      <option value={qfMatch?.away_team_id}>{qfMatch?.away_team?.name}</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-xs text-slate-400 mb-1 block">Tipo</label>
-                    <select value={qfNewType} onChange={e => setQfNewType(e.target.value as any)}
-                      className="w-full bg-navy-700 border border-navy-600 rounded px-2 py-1.5 text-sm text-white">
-                      <option value="goal">⚽ Gol</option>
-                      <option value="own_goal">⚽ Gol Contra</option>
-                      <option value="yellow_card">🟨 Amarelo</option>
-                      <option value="red_card">🟥 Vermelho</option>
-                    </select>
-                  </div>
-                </div>
-                {qfNewType !== 'own_goal' && (
-                  <div>
-                    <label className="text-xs text-slate-400 mb-1 block">Jogador</label>
-                    <select value={qfNewPlayer} onChange={e => setQfNewPlayer(e.target.value)}
-                      className="w-full bg-navy-700 border border-navy-600 rounded px-2 py-1.5 text-sm text-white">
-                      <option value="">— Selecione —</option>
-                      {qfAllPlayers.filter(p => p.teamId === qfNewTeam).map(p => (
-                        <option key={p.id} value={p.id}>{p.jersey_number ? `${p.jersey_number} - ` : ''}{p.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-xs text-slate-400 mb-1 block">Minuto</label>
-                    <input type="number" value={qfNewMinute} onChange={e => setQfNewMinute(e.target.value)}
-                      placeholder="0" className="w-full bg-navy-700 border border-navy-600 rounded px-2 py-1.5 text-sm text-white placeholder:text-slate-500" />
-                  </div>
-                  <div>
-                    <label className="text-xs text-slate-400 mb-1 block">Tempo</label>
-                    <select value={qfNewHalf} onChange={e => setQfNewHalf(Number(e.target.value))}
-                      className="w-full bg-navy-700 border border-navy-600 rounded px-2 py-1.5 text-sm text-white">
-                      <option value={1}>1º Tempo</option>
-                      <option value={2}>2º Tempo</option>
-                    </select>
-                  </div>
-                </div>
-                <Button variant="outline" size="sm" className="w-full border-gold-500/30 text-gold-400 hover:bg-gold-500/10"
-                  onClick={qfAddEvent} disabled={!qfNewMinute}>
-                  + Adicionar Evento
-                </Button>
-              </div>
-            </div>
-
-            {/* MOTM */}
-            <div>
-              <Label className="text-slate-400 text-xs mb-2 block">Destaque do Jogo</Label>
-              <select value={qfMotm} onChange={e => setQfMotm(e.target.value)}
-                className="w-full bg-navy-700 border border-navy-600 rounded px-3 py-2 text-sm text-white">
-                <option value="">— Nenhum —</option>
-                {qfAllPlayers.map(p => (
-                  <option key={p.id} value={p.id}>
-                    {p.jersey_number ? `${p.jersey_number} - ` : ''}{p.name} ({p.teamId === qfMatch?.home_team_id ? qfMatch?.home_team?.name : qfMatch?.away_team?.name})
-                  </option>
-                ))}
-              </select>
-            </div>
+            {/* MOTM (searchable combobox) */}
+            <MotmCombobox
+              players={qfAllPlayers}
+              homeName={qfMatch?.home_team?.name}
+              awayName={qfMatch?.away_team?.name}
+              homeId={qfMatch?.home_team_id}
+              value={qfMotm}
+              onChange={setQfMotm}
+            />
 
             {/* Finalize button */}
             <Button className="w-full h-12 text-base font-bold bg-gold-500 hover:bg-gold-600 text-navy-950" onClick={handleQuickFinalize} disabled={qfSaving}>

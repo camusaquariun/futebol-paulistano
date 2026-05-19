@@ -27,11 +27,11 @@ import { usePoolMatchBets, usePoolSeasonBets } from '@/hooks/useSupabase'
 
 type TabId = 'apostas' | 'cinema'
 
-// Cinema bets: até 18/05/2026 19:00 BRT (1h antes do 1º jogo) = 18/05 22:00 UTC
+// Cinema bets: até fim de 31/05/2026 BRT = 01/06 03:00 UTC
 // Extras (non-cinema) season bets: até fim de 30/08/2026 BRT = 31/08 03:00 UTC
-const CINEMA_DEADLINE_MS = Date.UTC(2026, 4, 18, 22, 0, 0)
+const CINEMA_DEADLINE_MS = Date.UTC(2026, 5, 1, 3, 0, 0)
 const EXTRAS_DEADLINE_MS = Date.UTC(2026, 7, 31, 3, 0, 0)
-const cinemaDeadlineLabel = '18/05/2026, 19:00 (Brasília) — 1h antes do 1º jogo'
+const cinemaDeadlineLabel = '31/05/2026, 23:59 (Brasília)'
 const extrasDeadlineLabel = '30/08/2026, 23:59 (Brasília)'
 const isCinemaOpen = () => Date.now() < CINEMA_DEADLINE_MS
 const isExtrasOpen = () => Date.now() < EXTRAS_DEADLINE_MS

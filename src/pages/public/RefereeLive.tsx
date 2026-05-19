@@ -158,15 +158,15 @@ export default function RefereeLive() {
   // Match state transitions
   const startFirstHalf = async () => {
     if (!matchId) return
-    await supabase.from('matches').update({
+    const { error } = await supabase.from('matches').update({
       match_state: 'first_half',
       half_start_time: new Date().toISOString(),
       home_score: 0, away_score: 0,
       home_fouls: 0, away_fouls: 0,
       home_fouls_1h: 0, away_fouls_1h: 0,
       home_fouls_2h: 0, away_fouls_2h: 0,
-      status: 'finished',
     }).eq('id', matchId)
+    if (error) { alert('Erro ao iniciar 1º tempo: ' + error.message); return }
     setHomeScore(0); setAwayScore(0)
     setHomeFouls(0); setAwayFouls(0)
     refetchMatch()
@@ -174,23 +174,25 @@ export default function RefereeLive() {
 
   const endFirstHalf = async () => {
     if (!matchId) return
-    await supabase.from('matches').update({
+    const { error } = await supabase.from('matches').update({
       match_state: 'halftime',
       half_start_time: null,
       home_fouls_1h: homeFouls,
       away_fouls_1h: awayFouls,
     }).eq('id', matchId)
+    if (error) { alert('Erro ao encerrar 1º tempo: ' + error.message); return }
     refetchMatch()
   }
 
   const startSecondHalf = async () => {
     if (!matchId) return
     setHomeFouls(0); setAwayFouls(0)
-    await supabase.from('matches').update({
+    const { error } = await supabase.from('matches').update({
       match_state: 'second_half',
       half_start_time: new Date().toISOString(),
       home_fouls: 0, away_fouls: 0,
     }).eq('id', matchId)
+    if (error) { alert('Erro ao iniciar 2º tempo: ' + error.message); return }
     refetchMatch()
   }
 

@@ -270,6 +270,7 @@ export function useMatches(championshipId: string | undefined, categoryId?: stri
         .from('matches')
         .select('*, home_team:teams!matches_home_team_id_fkey(*), away_team:teams!matches_away_team_id_fkey(*), category:categories(*)')
         .eq('championship_id', championshipId!)
+        .eq('is_test', false)
         .order('phase')
         .order('match_date', { nullsFirst: false })
       if (categoryId) query = query.eq('category_id', categoryId)
@@ -289,6 +290,7 @@ export function useTeamMatches(championshipId: string | undefined, teamId: strin
         .from('matches')
         .select('*, home_team:teams!matches_home_team_id_fkey(*), away_team:teams!matches_away_team_id_fkey(*), category:categories(*), motm_player:players!matches_motm_player_id_fkey(*)')
         .eq('championship_id', championshipId!)
+        .eq('is_test', false)
         .or(`home_team_id.eq.${teamId},away_team_id.eq.${teamId}`)
         .order('match_date', { nullsFirst: false })
       if (error) throw error

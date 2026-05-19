@@ -65,6 +65,7 @@ export default function Referees() {
   const [editingRef, setEditingRef] = useState<any>(null)
   const [refName, setRefName] = useState('')
   const [refPhone, setRefPhone] = useState('')
+  const [refCpf, setRefCpf] = useState('')
   const [refRoles, setRefRoles] = useState<string[]>(['field', 'table'])
   const [refEmail, setRefEmail] = useState('')
   const [saving, setSaving] = useState(false)
@@ -84,8 +85,8 @@ export default function Referees() {
   const [ratingValue, setRatingValue] = useState(0)
   const [ratingNotes, setRatingNotes] = useState('')
 
-  const openNew = () => { setEditingRef(null); setRefName(''); setRefPhone(''); setRefRoles(['field', 'table']); setRefEmail(''); setEditOpen(true) }
-  const openEdit = (ref: any) => { setEditingRef(ref); setRefName(ref.name); setRefPhone(ref.phone ?? ''); setRefRoles(ref.roles ?? ['field', 'table']); setRefEmail(''); setEditOpen(true) }
+  const openNew = () => { setEditingRef(null); setRefName(''); setRefPhone(''); setRefCpf(''); setRefRoles(['field', 'table']); setRefEmail(''); setEditOpen(true) }
+  const openEdit = (ref: any) => { setEditingRef(ref); setRefName(ref.name); setRefPhone(ref.phone ?? ''); setRefCpf(ref.cpf ?? ''); setRefRoles(ref.roles ?? ['field', 'table']); setRefEmail(''); setEditOpen(true) }
 
   const handleSaveRef = async () => {
     setSaving(true)
@@ -104,12 +105,12 @@ export default function Referees() {
     }
 
     if (editingRef) {
-      const updateData: any = { name: refName, phone: refPhone || null, roles: refRoles }
+      const updateData: any = { name: refName, phone: refPhone || null, cpf: refCpf || null, roles: refRoles }
       if (userId !== undefined) updateData.user_id = userId
       await supabase.from('referees').update(updateData).eq('id', editingRef.id)
     } else {
       await supabase.from('referees').insert({
-        name: refName, phone: refPhone || null, roles: refRoles,
+        name: refName, phone: refPhone || null, cpf: refCpf || null, roles: refRoles,
         user_id: userId ?? null,
       })
     }
@@ -330,6 +331,10 @@ export default function Referees() {
             <div className="space-y-2">
               <Label>Telefone (opcional)</Label>
               <Input value={refPhone} onChange={e => setRefPhone(e.target.value)} placeholder="(11) 99999-9999" />
+            </div>
+            <div className="space-y-2">
+              <Label>CPF (opcional)</Label>
+              <Input value={refCpf} onChange={e => setRefCpf(e.target.value)} placeholder="000.000.000-00" />
             </div>
             <div className="space-y-2">
               <Label>Email do Usuário (para acesso à arbitragem)</Label>
