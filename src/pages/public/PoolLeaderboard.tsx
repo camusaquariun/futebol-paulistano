@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '@/hooks/useAuth'
 import {
   useActiveChampionship,
@@ -32,6 +33,26 @@ export default function PoolLeaderboard() {
   }, [matchBets, seasonBets, allMatches])
 
   const myRank = leaderboard.findIndex(e => e.userId === user?.id)
+
+  const { data: authUsers } = useQuery({
+    queryKey: ['auth_users_for_leaderboard'],
+    queryFn: async () => {
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/link-player`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'list-users' }),
+      })
+      const d = await res.json()
+      return (d.users ?? []) as { id: string; email: string; display_name: string | null }[]
+    },
+  })
+  const nameByUserId = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const u of authUsers ?? []) m.set(u.id, (u.display_name || u.email.split('@')[0]).trim())
+    return m
+  }, [authUsers])
+  const labelFor = (e: { userId: string; email: string }) =>
+    nameByUserId.get(e.userId) ?? e.email?.split('@')[0] ?? 'Anônimo'
 
   return (
     <div className="space-y-6">
@@ -153,7 +174,7 @@ export default function PoolLeaderboard() {
                         <td className="py-3 px-4">
                           <div className="flex items-center gap-2">
                             <span className={`font-medium truncate max-w-[160px] block ${isMe ? 'text-pitch-400 font-bold' : 'text-white'}`}>
-                              {entry.email.split('@')[0]}
+                              {labelFor(entry)}
                             </span>
                             {isMe && (
                               <span className="flex-shrink-0 text-[9px] font-bold bg-pitch-600/30 text-pitch-400 border border-pitch-500/40 px-1.5 py-0.5 rounded-full">
