@@ -492,17 +492,18 @@ export default function MatchesAdmin() {
 
   const openQuickFinalize = async (match: any) => {
     setQfMatch(match)
-    setQfHomeScore(0)
-    setQfAwayScore(0)
-    setQfHomeFouls(0)
-    setQfAwayFouls(0)
-    setQfMotm('')
+    // Pre-fill score and fouls from existing match data (for editing finished matches)
+    setQfHomeScore(match.home_score ?? 0)
+    setQfAwayScore(match.away_score ?? 0)
+    setQfHomeFouls(match.home_fouls ?? 0)
+    setQfAwayFouls(match.away_fouls ?? 0)
+    setQfMotm(match.motm_player_id ?? '')
     setQfPlayerStats({})
     setQfOwnGoalsHome(0)
     setQfOwnGoalsAway(0)
     setQfPresentPlayers(new Set())
     setQfRosterLoaded(false)
-    // Pre-load existing referees for this match
+    // Pre-load existing referees
     setQfRefTable(''); setQfRefField1(''); setQfRefField2('')
     const { data: existingRefs } = await supabase
       .from('match_referees')
@@ -513,6 +514,37 @@ export default function MatchesAdmin() {
       else if (r.role === 'field_1') setQfRefField1(r.referee_id)
       else if (r.role === 'field_2') setQfRefField2(r.referee_id)
     }
+    // Pre-load existing events into per-player counters
+    const { data: existingEvents } = await supabase
+      .from('match_events')
+      .select('player_id, event_type, team_id')
+      .eq('match_id', match.id)
+    const stats: Record<string, { goals: number; yellow: number; red: number }> = {}
+    let ownHome = 0, ownAway = 0
+    for (const e of existingEvents ?? []) {
+      if (e.event_type === 'own_goal') {
+        if (e.team_id === match.home_team_id) ownHome++
+        else if (e.team_id === match.away_team_id) ownAway++
+        continue
+      }
+      if (!e.player_id) continue
+      const cur = stats[e.player_id] ?? { goals: 0, yellow: 0, red: 0 }
+      if (e.event_type === 'goal') cur.goals++
+      else if (e.event_type === 'yellow_card') cur.yellow++
+      else if (e.event_type === 'red_card') cur.red++
+      stats[e.player_id] = cur
+    }
+    setQfPlayerStats(stats)
+    setQfOwnGoalsHome(ownHome)
+    setQfOwnGoalsAway(ownAway)
+    // Pre-load attendance
+    const { data: existingAttendance } = await supabase
+      .from('match_attendance')
+      .select('player_id, present')
+      .eq('match_id', match.id)
+    const present = new Set<string>()
+    for (const a of existingAttendance ?? []) if (a.present) present.add(a.player_id)
+    setQfPresentPlayers(present)
     setQfOpen(true)
   }
 
@@ -543,8 +575,13 @@ export default function MatchesAdmin() {
   const handleQuickFinalize = async () => {
     if (!qfMatch) return
     if (qfGoalsAttributed.home !== qfHomeScore || qfGoalsAttributed.away !== qfAwayScore) {
-      alert(`Os gols atribuídos não batem com o placar.\n${qfMatch.home_team?.name}: ${qfGoalsAttributed.home}/${qfHomeScore}\n${qfMatch.away_team?.name}: ${qfGoalsAttributed.away}/${qfAwayScore}`)
-      return
+      const ok = confirm(
+        `Os gols atribuídos aos jogadores ainda não batem com o placar:\n` +
+        `${qfMatch.home_team?.name}: ${qfGoalsAttributed.home}/${qfHomeScore}\n` +
+        `${qfMatch.away_team?.name}: ${qfGoalsAttributed.away}/${qfAwayScore}\n\n` +
+        `Salvar mesmo assim? Você pode completar os detalhes depois.`
+      )
+      if (!ok) return
     }
     setQfSaving(true)
 
@@ -811,11 +848,17 @@ export default function MatchesAdmin() {
                   })()}
                 </Link>
                 <div className="flex items-center gap-1 flex-shrink-0">
+                  <Button variant="ghost" size="icon" onClick={() => openQuickFinalize(match)}
+                    title={match.status === 'finished' ? 'Editar placar e detalhes' : 'Finalizar rápido'}>
+                    <Zap className="h-4 w-4 text-gold-400" />
+                  </Button>
+                  {match.status === 'finished' && (
+                    <Button variant="ghost" size="icon" onClick={() => openEventsEditor(match)} title="Editar eventos (minuto/tempo)">
+                      <Pencil className="h-4 w-4 text-slate-400" />
+                    </Button>
+                  )}
                   {match.status !== 'finished' && (
                     <>
-                      <Button variant="ghost" size="icon" onClick={() => openQuickFinalize(match)} title="Finalizar rápido">
-                        <Zap className="h-4 w-4 text-gold-400" />
-                      </Button>
                       <Button variant="ghost" size="icon" onClick={() => openEditMatch(match)} title="Editar partida">
                         <Pencil className="h-4 w-4 text-slate-400" />
                       </Button>
@@ -823,11 +866,6 @@ export default function MatchesAdmin() {
                         <Trash2 className="h-4 w-4 text-red-400/60 hover:text-red-400" />
                       </Button>
                     </>
-                  )}
-                  {match.status === 'finished' && (
-                    <Button variant="ghost" size="icon" onClick={() => openEventsEditor(match)} title="Editar eventos">
-                      <Pencil className="h-4 w-4 text-slate-400" />
-                    </Button>
                   )}
                   <Link to={`/admin/partidas/${match.id}`}>
                     <ChevronRight className="h-5 w-5 text-slate-500" />
