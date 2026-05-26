@@ -171,18 +171,25 @@ export default function MatchesAdmin() {
   const [qfMatch, setQfMatch] = useState<any>(null)
   const [qfHomeScore, setQfHomeScore] = useState(0)
   const [qfAwayScore, setQfAwayScore] = useState(0)
-  const [qfHomeFouls, setQfHomeFouls] = useState(0)
-  const [qfAwayFouls, setQfAwayFouls] = useState(0)
+  // Fouls per half (auto-summed into total)
+  const [qfHomeFouls1h, setQfHomeFouls1h] = useState(0)
+  const [qfHomeFouls2h, setQfHomeFouls2h] = useState(0)
+  const [qfAwayFouls1h, setQfAwayFouls1h] = useState(0)
+  const [qfAwayFouls2h, setQfAwayFouls2h] = useState(0)
+  const qfHomeFouls = qfHomeFouls1h + qfHomeFouls2h
+  const qfAwayFouls = qfAwayFouls1h + qfAwayFouls2h
   const [qfMotm, setQfMotm] = useState('')
-  // Per-player stat tally for quick finalize
-  // Map: player_id -> { goals, yellow, red }
-  const [qfPlayerStats, setQfPlayerStats] = useState<Record<string, { goals: number; yellow: number; red: number }>>({})
+  // Per-player stat tally for quick finalize.
+  // goals = number (counter). yellow/red = boolean (checkbox).
+  const [qfPlayerStats, setQfPlayerStats] = useState<Record<string, { goals: number; yellow: boolean; red: boolean }>>({})
   const [qfOwnGoalsHome, setQfOwnGoalsHome] = useState(0)
   const [qfOwnGoalsAway, setQfOwnGoalsAway] = useState(0)
   // Referees: 1 table + up to 2 field
   const [qfRefTable, setQfRefTable] = useState('')
   const [qfRefField1, setQfRefField1] = useState('')
   const [qfRefField2, setQfRefField2] = useState('')
+  // Per-field-referee rating
+  const [qfRatings, setQfRatings] = useState<Record<string, { rating: number; notes: string }>>({})
 
   const { data: qfReferees } = useQuery({
     queryKey: ['referees_list'],
@@ -495,31 +502,39 @@ export default function MatchesAdmin() {
     // Pre-fill score and fouls from existing match data (for editing finished matches)
     setQfHomeScore(match.home_score ?? 0)
     setQfAwayScore(match.away_score ?? 0)
-    setQfHomeFouls(match.home_fouls ?? 0)
-    setQfAwayFouls(match.away_fouls ?? 0)
+    setQfHomeFouls1h(match.home_fouls_1h ?? 0)
+    setQfHomeFouls2h(match.home_fouls_2h ?? 0)
+    setQfAwayFouls1h(match.away_fouls_1h ?? 0)
+    setQfAwayFouls2h(match.away_fouls_2h ?? 0)
     setQfMotm(match.motm_player_id ?? '')
     setQfPlayerStats({})
     setQfOwnGoalsHome(0)
     setQfOwnGoalsAway(0)
     setQfPresentPlayers(new Set())
     setQfRosterLoaded(false)
-    // Pre-load existing referees
+    setQfRatings({})
+    // Pre-load existing referees + ratings
     setQfRefTable(''); setQfRefField1(''); setQfRefField2('')
     const { data: existingRefs } = await supabase
       .from('match_referees')
-      .select('referee_id, role')
+      .select('referee_id, role, rating, notes')
       .eq('match_id', match.id)
+    const ratings: Record<string, { rating: number; notes: string }> = {}
     for (const r of existingRefs ?? []) {
       if (r.role === 'table') setQfRefTable(r.referee_id)
       else if (r.role === 'field_1') setQfRefField1(r.referee_id)
       else if (r.role === 'field_2') setQfRefField2(r.referee_id)
+      if (r.role !== 'table' && r.rating != null) {
+        ratings[r.referee_id] = { rating: r.rating, notes: r.notes ?? '' }
+      }
     }
-    // Pre-load existing events into per-player counters
+    setQfRatings(ratings)
+    // Pre-load existing events into per-player counters (yellow/red collapse to boolean)
     const { data: existingEvents } = await supabase
       .from('match_events')
       .select('player_id, event_type, team_id')
       .eq('match_id', match.id)
-    const stats: Record<string, { goals: number; yellow: number; red: number }> = {}
+    const stats: Record<string, { goals: number; yellow: boolean; red: boolean }> = {}
     let ownHome = 0, ownAway = 0
     for (const e of existingEvents ?? []) {
       if (e.event_type === 'own_goal') {
@@ -528,10 +543,10 @@ export default function MatchesAdmin() {
         continue
       }
       if (!e.player_id) continue
-      const cur = stats[e.player_id] ?? { goals: 0, yellow: 0, red: 0 }
+      const cur = stats[e.player_id] ?? { goals: 0, yellow: false, red: false }
       if (e.event_type === 'goal') cur.goals++
-      else if (e.event_type === 'yellow_card') cur.yellow++
-      else if (e.event_type === 'red_card') cur.red++
+      else if (e.event_type === 'yellow_card') cur.yellow = true
+      else if (e.event_type === 'red_card') cur.red = true
       stats[e.player_id] = cur
     }
     setQfPlayerStats(stats)
@@ -548,11 +563,16 @@ export default function MatchesAdmin() {
     setQfOpen(true)
   }
 
-  const bumpPlayerStat = (playerId: string, key: 'goals' | 'yellow' | 'red', delta: number) => {
+  const bumpPlayerGoals = (playerId: string, delta: number) => {
     setQfPlayerStats(prev => {
-      const cur = prev[playerId] ?? { goals: 0, yellow: 0, red: 0 }
-      const next = { ...cur, [key]: Math.max(0, cur[key] + delta) }
-      return { ...prev, [playerId]: next }
+      const cur = prev[playerId] ?? { goals: 0, yellow: false, red: false }
+      return { ...prev, [playerId]: { ...cur, goals: Math.max(0, cur.goals + delta) } }
+    })
+  }
+  const togglePlayerCard = (playerId: string, key: 'yellow' | 'red') => {
+    setQfPlayerStats(prev => {
+      const cur = prev[playerId] ?? { goals: 0, yellow: false, red: false }
+      return { ...prev, [playerId]: { ...cur, [key]: !cur[key] } }
     })
   }
 
@@ -593,6 +613,10 @@ export default function MatchesAdmin() {
       away_score: qfAwayScore,
       home_fouls: qfHomeFouls,
       away_fouls: qfAwayFouls,
+      home_fouls_1h: qfHomeFouls1h,
+      home_fouls_2h: qfHomeFouls2h,
+      away_fouls_1h: qfAwayFouls1h,
+      away_fouls_2h: qfAwayFouls2h,
       motm_player_id: qfMotm || null,
       half_start_time: null,
     }).eq('id', qfMatch.id)
@@ -608,10 +632,10 @@ export default function MatchesAdmin() {
       for (let i = 0; i < stats.goals; i++) {
         events.push({ match_id: qfMatch.id, team_id: player.teamId, event_type: 'goal', player_id: playerId, minute: 0, half: 1 })
       }
-      for (let i = 0; i < stats.yellow; i++) {
+      if (stats.yellow) {
         events.push({ match_id: qfMatch.id, team_id: player.teamId, event_type: 'yellow_card', player_id: playerId, minute: 0, half: 1 })
       }
-      for (let i = 0; i < stats.red; i++) {
+      if (stats.red) {
         events.push({ match_id: qfMatch.id, team_id: player.teamId, event_type: 'red_card', player_id: playerId, minute: 0, half: 1 })
       }
     }
@@ -627,12 +651,22 @@ export default function MatchesAdmin() {
       if (evErr) { alert('Erro ao salvar eventos: ' + evErr.message); setQfSaving(false); return }
     }
 
-    // Save referees: replace existing assignments
+    // Save referees: replace existing assignments. Include ratings/notes for field refs.
     await supabase.from('match_referees').delete().eq('match_id', qfMatch.id)
     const refRows: any[] = []
     if (qfRefTable)  refRows.push({ match_id: qfMatch.id, referee_id: qfRefTable,  role: 'table' })
-    if (qfRefField1) refRows.push({ match_id: qfMatch.id, referee_id: qfRefField1, role: 'field_1' })
-    if (qfRefField2) refRows.push({ match_id: qfMatch.id, referee_id: qfRefField2, role: 'field_2' })
+    if (qfRefField1) {
+      const r = qfRatings[qfRefField1]
+      refRows.push({ match_id: qfMatch.id, referee_id: qfRefField1, role: 'field_1',
+        rating: r?.rating != null && r.rating > 0 ? r.rating : null,
+        notes: r?.notes?.trim() ? r.notes.trim() : null })
+    }
+    if (qfRefField2) {
+      const r = qfRatings[qfRefField2]
+      refRows.push({ match_id: qfMatch.id, referee_id: qfRefField2, role: 'field_2',
+        rating: r?.rating != null && r.rating > 0 ? r.rating : null,
+        notes: r?.notes?.trim() ? r.notes.trim() : null })
+    }
     if (refRows.length > 0) await supabase.from('match_referees').insert(refRows)
 
     // Save attendance
@@ -1038,17 +1072,35 @@ export default function MatchesAdmin() {
               </div>
             </div>
 
-            {/* Fouls (single total per team) */}
+            {/* Fouls per half (auto-summed) */}
             <div>
-              <Label className="text-slate-400 text-xs mb-2 block">Faltas (total)</Label>
+              <Label className="text-slate-400 text-xs mb-2 block">Faltas por tempo</Label>
               <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <p className="text-xs text-slate-500 text-center">{qfMatch?.home_team?.name}</p>
-                  <Input type="number" min={0} value={qfHomeFouls} onChange={e => setQfHomeFouls(Math.max(0, +e.target.value))} className="text-center" />
+                <div>
+                  <p className="text-xs text-slate-500 text-center mb-1">{qfMatch?.home_team?.name} <span className="text-pitch-400">(total {qfHomeFouls})</span></p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] text-slate-500 block text-center mb-0.5">1ºT</label>
+                      <Input type="number" min={0} value={qfHomeFouls1h} onChange={e => setQfHomeFouls1h(Math.max(0, +e.target.value))} className="text-center" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-slate-500 block text-center mb-0.5">2ºT</label>
+                      <Input type="number" min={0} value={qfHomeFouls2h} onChange={e => setQfHomeFouls2h(Math.max(0, +e.target.value))} className="text-center" />
+                    </div>
+                  </div>
                 </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-slate-500 text-center">{qfMatch?.away_team?.name}</p>
-                  <Input type="number" min={0} value={qfAwayFouls} onChange={e => setQfAwayFouls(Math.max(0, +e.target.value))} className="text-center" />
+                <div>
+                  <p className="text-xs text-slate-500 text-center mb-1">{qfMatch?.away_team?.name} <span className="text-pitch-400">(total {qfAwayFouls})</span></p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] text-slate-500 block text-center mb-0.5">1ºT</label>
+                      <Input type="number" min={0} value={qfAwayFouls1h} onChange={e => setQfAwayFouls1h(Math.max(0, +e.target.value))} className="text-center" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-slate-500 block text-center mb-0.5">2ºT</label>
+                      <Input type="number" min={0} value={qfAwayFouls2h} onChange={e => setQfAwayFouls2h(Math.max(0, +e.target.value))} className="text-center" />
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1088,6 +1140,41 @@ export default function MatchesAdmin() {
                   </select>
                 </div>
               </div>
+
+              {/* Per-field-referee rating + notes */}
+              {[qfRefField1, qfRefField2].filter(Boolean).length > 0 && (
+                <div className="mt-3 space-y-2">
+                  {[qfRefField1, qfRefField2].filter(Boolean).map(refId => {
+                    const ref = (qfReferees ?? []).find(r => r.id === refId)
+                    const cur = qfRatings[refId] ?? { rating: 0, notes: '' }
+                    return (
+                      <div key={refId} className="bg-navy-800/40 border border-navy-700 rounded-lg p-2 space-y-1.5">
+                        <p className="text-xs font-medium text-slate-300">⚽ {ref?.name}</p>
+                        <div className="flex items-center gap-2">
+                          <label className="text-[10px] text-slate-500">Nota (0–10):</label>
+                          <Input
+                            type="number"
+                            min={0} max={10} step={0.5}
+                            value={cur.rating}
+                            onChange={e => {
+                              const v = Math.min(10, Math.max(0, +e.target.value))
+                              setQfRatings(p => ({ ...p, [refId]: { rating: v, notes: cur.notes } }))
+                            }}
+                            className="h-7 w-20 text-center" />
+                          <span className={`text-xs font-bold ${cur.rating >= 7 ? 'text-pitch-400' : cur.rating >= 4 ? 'text-amber-400' : cur.rating > 0 ? 'text-red-400' : 'text-slate-600'}`}>
+                            {cur.rating > 0 ? cur.rating.toFixed(1) : '—'}
+                          </span>
+                        </div>
+                        <Input
+                          placeholder="Comentários sobre o árbitro (opcional)"
+                          value={cur.notes}
+                          onChange={e => setQfRatings(p => ({ ...p, [refId]: { rating: cur.rating, notes: e.target.value } }))}
+                          className="h-7 text-xs" />
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
             </div>
 
             {/* Player attendance + per-player stats (combined) */}
@@ -1132,29 +1219,11 @@ export default function MatchesAdmin() {
                         {(side.roster ?? []).map(pt => {
                           const p = pt.player!
                           const present = qfPresentPlayers.has(p.id)
-                          const stats = qfPlayerStats[p.id] ?? { goals: 0, yellow: 0, red: 0 }
+                          const stats = qfPlayerStats[p.id] ?? { goals: 0, yellow: false, red: false }
                           const isHomeSide = side.teamId === qfMatch?.home_team_id
                           const teamScoreLimit = isHomeSide ? qfHomeScore : qfAwayScore
                           const teamAttributed = isHomeSide ? qfGoalsAttributed.home : qfGoalsAttributed.away
                           const goalAtLimit = teamAttributed >= teamScoreLimit
-                          const counter = (key: 'goals' | 'yellow' | 'red', color: string) => {
-                            const isGoal = key === 'goals'
-                            const plusDisabled = isGoal && goalAtLimit
-                            return (
-                              <div className="flex items-center gap-0.5">
-                                <button type="button"
-                                  onClick={() => bumpPlayerStat(p.id, key, -1)}
-                                  disabled={!present || stats[key] === 0}
-                                  className="w-6 h-6 rounded bg-slate-700 text-slate-400 hover:bg-slate-600 disabled:opacity-20 disabled:cursor-not-allowed text-xs font-bold">−</button>
-                                <span className={`w-5 text-center text-xs font-bold ${stats[key] > 0 ? color : 'text-slate-600'}`}>{stats[key]}</span>
-                                <button type="button"
-                                  onClick={() => { if (!present) toggleQfPresent(p.id); bumpPlayerStat(p.id, key, 1) }}
-                                  disabled={plusDisabled}
-                                  title={plusDisabled ? `Placar do time já é ${teamScoreLimit}` : ''}
-                                  className="w-6 h-6 rounded bg-slate-700 text-slate-300 hover:bg-pitch-600 disabled:opacity-20 disabled:cursor-not-allowed text-xs font-bold">+</button>
-                              </div>
-                            )
-                          }
                           return (
                             <div key={p.id} className={`flex items-center gap-2 py-1 px-1 rounded ${present ? '' : 'opacity-60'}`}>
                               <input
@@ -1167,9 +1236,31 @@ export default function MatchesAdmin() {
                                 {pt.jersey_number != null && <span className="text-slate-500 mr-1">#{pt.jersey_number}</span>}
                                 {p.name}
                               </span>
-                              {counter('goals', 'text-pitch-400')}
-                              {counter('yellow', 'text-yellow-400')}
-                              {counter('red', 'text-red-400')}
+                              {/* Goals: counter */}
+                              <div className="flex items-center gap-0.5">
+                                <button type="button"
+                                  onClick={() => bumpPlayerGoals(p.id, -1)}
+                                  disabled={!present || stats.goals === 0}
+                                  className="w-6 h-6 rounded bg-slate-700 text-slate-400 hover:bg-slate-600 disabled:opacity-20 disabled:cursor-not-allowed text-xs font-bold">−</button>
+                                <span className={`w-5 text-center text-xs font-bold ${stats.goals > 0 ? 'text-pitch-400' : 'text-slate-600'}`}>{stats.goals}</span>
+                                <button type="button"
+                                  onClick={() => { if (!present) toggleQfPresent(p.id); bumpPlayerGoals(p.id, 1) }}
+                                  disabled={goalAtLimit}
+                                  title={goalAtLimit ? `Placar do time já é ${teamScoreLimit}` : ''}
+                                  className="w-6 h-6 rounded bg-slate-700 text-slate-300 hover:bg-pitch-600 disabled:opacity-20 disabled:cursor-not-allowed text-xs font-bold">+</button>
+                              </div>
+                              {/* Yellow card: checkbox */}
+                              <label className="inline-flex items-center justify-center w-6 h-6 cursor-pointer" title="Cartão amarelo">
+                                <input type="checkbox" className="sr-only" checked={stats.yellow}
+                                  onChange={() => { if (!present) toggleQfPresent(p.id); togglePlayerCard(p.id, 'yellow') }} />
+                                <span className={`block w-4 h-5 rounded-[2px] border ${stats.yellow ? 'bg-yellow-400 border-yellow-300' : 'border-slate-600 bg-transparent'}`} />
+                              </label>
+                              {/* Red card: checkbox */}
+                              <label className="inline-flex items-center justify-center w-6 h-6 cursor-pointer" title="Cartão vermelho">
+                                <input type="checkbox" className="sr-only" checked={stats.red}
+                                  onChange={() => { if (!present) toggleQfPresent(p.id); togglePlayerCard(p.id, 'red') }} />
+                                <span className={`block w-4 h-5 rounded-[2px] border ${stats.red ? 'bg-red-500 border-red-400' : 'border-slate-600 bg-transparent'}`} />
+                              </label>
                             </div>
                           )
                         })}
