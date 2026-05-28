@@ -374,7 +374,7 @@ function useTeamFouls(championshipId: string | undefined, categoryId: string) {
   })
 }
 
-function StandingsTable({ categoryId }: { categoryId: string }) {
+function StandingsTable({ categoryId, categoryName }: { categoryId: string; categoryName?: string }) {
   const { data: championship } = useActiveChampionship()
   const { data: standings, isLoading: loadingStandings } = useStandings(championship?.id, categoryId)
   const { data: teams, isLoading: loadingTeams } = useTeamsByCategory(championship?.id, categoryId)
@@ -426,6 +426,19 @@ function StandingsTable({ categoryId }: { categoryId: string }) {
   const totalTeams = merged.length
   const qualifyCount = (catConfig as any)?.qualify_count ?? (totalTeams >= 6 ? 4 : totalTeams >= 4 ? Math.min(4, totalTeams) : totalTeams)
   const turns = (catConfig as any)?.turns ?? 1
+  // Veterano special-case: top 2 → semi direct, 3rd–6th → quarter-finals.
+  const isVeterano = categoryName === 'Veterano'
+  const semiDirectCount = isVeterano ? 2 : 0
+  const quarterCount = isVeterano ? 4 : 0
+  // For non-Veterano, the existing "qualifyCount" tier is treated like "semiDirect" visually.
+  const qualifyTier = (idx: number): 'semi' | 'quarter' | null => {
+    if (isVeterano) {
+      if (idx < semiDirectCount) return 'semi'
+      if (idx < semiDirectCount + quarterCount) return 'quarter'
+      return null
+    }
+    return idx < qualifyCount ? 'semi' : null
+  }
 
   return (
     <div>
@@ -450,7 +463,8 @@ function StandingsTable({ categoryId }: { categoryId: string }) {
         </TableHeader>
         <TableBody>
           {merged.map((team, idx) => {
-            const qualified = idx < qualifyCount
+            const tier = qualifyTier(idx)
+            const qualified = tier !== null
             const isLast = idx === merged.length - 1 && merged.length > 1
             return (
               <TableRow
@@ -458,8 +472,10 @@ function StandingsTable({ categoryId }: { categoryId: string }) {
                 className={
                   isLast
                     ? 'bg-red-600/8 border-l-2 border-l-red-500'
-                    : qualified
+                    : tier === 'semi'
                     ? 'bg-pitch-600/5 border-l-2 border-l-pitch-500'
+                    : tier === 'quarter'
+                    ? 'bg-amber-500/5 border-l-2 border-l-amber-500'
                     : idx % 2 === 0
                     ? 'bg-navy-900/30'
                     : ''
@@ -487,7 +503,16 @@ function StandingsTable({ categoryId }: { categoryId: string }) {
                       )
                     })()}
                     <Link to={`/times/${team.team_id}`} className="font-semibold text-white hover:text-pitch-400 transition-colors">{team.team_name}</Link>
-                    {qualified && <Badge variant="default" className="ml-1 text-[10px] px-1.5 py-0">Classificado</Badge>}
+                    {tier === 'semi' && (
+                      <Badge className="ml-1 text-[10px] px-1.5 py-0 bg-pitch-600 text-white border-pitch-500">
+                        {isVeterano ? 'Semifinal' : 'Classificado'}
+                      </Badge>
+                    )}
+                    {tier === 'quarter' && (
+                      <Badge className="ml-1 text-[10px] px-1.5 py-0 bg-amber-500 text-navy-950 border-amber-400">
+                        Quartas
+                      </Badge>
+                    )}
                   </div>
                 </TableCell>
                 <TableCell className="text-center font-extrabold text-lg text-gold-400">{team.points}</TableCell>
@@ -518,9 +543,24 @@ function StandingsTable({ categoryId }: { categoryId: string }) {
       </Table>
       <div className="flex items-center gap-3 mt-3 px-2 text-xs">
         <span className="text-pitch-400 font-medium">
-          {turns === 2 ? 'Ida e volta' : 'Turno único'} · {qualifyCount} classificam
+          {turns === 2 ? 'Ida e volta' : 'Turno único'}
+          {isVeterano
+            ? ' · 1º e 2º vão direto para a semifinal · 3º ao 6º jogam quartas'
+            : ` · ${qualifyCount} classificam`}
         </span>
       </div>
+      {isVeterano && (
+        <div className="flex flex-wrap items-center gap-3 mt-2 px-2 text-[11px] text-slate-400">
+          <span className="inline-flex items-center gap-1">
+            <span className="inline-block w-3 h-3 rounded bg-pitch-600 border border-pitch-500" />
+            Semifinal direta (1º e 2º)
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <span className="inline-block w-3 h-3 rounded bg-amber-500 border border-amber-400" />
+            Quartas de final (3º ao 6º)
+          </span>
+        </div>
+      )}
       <div className="flex items-center gap-4 mt-1 px-2 text-xs text-slate-500">
         <span>P = Pontos</span>
         <span>J = Jogos</span>
@@ -548,7 +588,7 @@ export default function Standings() {
         <h1 className="text-2xl font-bold text-white">Classificação</h1>
       </div>
       <CategoryTabs>
-        {(categoryId) => <StandingsTable categoryId={categoryId} />}
+        {(categoryId, categoryName) => <StandingsTable categoryId={categoryId} categoryName={categoryName} />}
       </CategoryTabs>
     </div>
   )
