@@ -1215,6 +1215,30 @@ export default function MatchesAdmin() {
                           <span title="Cartões vermelhos">🟥</span>
                         </div>
                       </div>
+                      {/* Own goal row (rendered at the top so it's visible without scrolling) */}
+                      {(() => {
+                        const isHomeSide = side.teamId === qfMatch?.home_team_id
+                        const oppLimit = isHomeSide ? qfAwayScore : qfHomeScore
+                        const oppAttributed = isHomeSide ? qfGoalsAttributed.away : qfGoalsAttributed.home
+                        const plusOwnDisabled = oppAttributed >= oppLimit
+                        return (
+                          <div className="flex items-center gap-2 py-1.5 px-2 mb-1.5 rounded bg-red-500/5 border border-red-500/20">
+                            <span className="text-[11px] text-red-300 flex-1">
+                              ⚽ Gol contra (jogador desconhecido)
+                            </span>
+                            <div className="flex items-center gap-0.5">
+                              <button type="button" onClick={() => side.setOwnGoals(Math.max(0, side.ownGoals - 1))}
+                                disabled={side.ownGoals === 0}
+                                className="w-6 h-6 rounded bg-slate-700 text-slate-400 hover:bg-slate-600 disabled:opacity-20 text-xs font-bold">−</button>
+                              <span className={`w-5 text-center text-xs font-bold ${side.ownGoals > 0 ? 'text-red-400' : 'text-slate-600'}`}>{side.ownGoals}</span>
+                              <button type="button" onClick={() => side.setOwnGoals(side.ownGoals + 1)}
+                                disabled={plusOwnDisabled}
+                                title={plusOwnDisabled ? `Placar adversário já é ${oppLimit}` : ''}
+                                className="w-6 h-6 rounded bg-slate-700 text-slate-300 hover:bg-red-600 disabled:opacity-20 disabled:cursor-not-allowed text-xs font-bold">+</button>
+                            </div>
+                          </div>
+                        )
+                      })()}
                       <div className="space-y-1">
                         {(side.roster ?? []).map(pt => {
                           const p = pt.player!
@@ -1264,30 +1288,6 @@ export default function MatchesAdmin() {
                             </div>
                           )
                         })}
-                        {(() => {
-                          // Own goals on side X count for the OPPOSING team's score.
-                          const isHomeSide = side.teamId === qfMatch?.home_team_id
-                          const oppLimit = isHomeSide ? qfAwayScore : qfHomeScore
-                          const oppAttributed = isHomeSide ? qfGoalsAttributed.away : qfGoalsAttributed.home
-                          const plusOwnDisabled = oppAttributed >= oppLimit
-                          return (
-                            <div className="flex items-center gap-2 py-1 pt-2 border-t border-navy-700">
-                              <span className="text-[10px] text-slate-500 flex-1">Gol contra (sem jogador)</span>
-                              <div className="flex items-center gap-0.5">
-                                <button type="button" onClick={() => side.setOwnGoals(Math.max(0, side.ownGoals - 1))}
-                                  disabled={side.ownGoals === 0}
-                                  className="w-6 h-6 rounded bg-slate-700 text-slate-400 hover:bg-slate-600 disabled:opacity-20 text-xs font-bold">−</button>
-                                <span className={`w-5 text-center text-xs font-bold ${side.ownGoals > 0 ? 'text-red-400' : 'text-slate-600'}`}>{side.ownGoals}</span>
-                                <button type="button" onClick={() => side.setOwnGoals(side.ownGoals + 1)}
-                                  disabled={plusOwnDisabled}
-                                  title={plusOwnDisabled ? `Placar adversário já é ${oppLimit}` : ''}
-                                  className="w-6 h-6 rounded bg-slate-700 text-slate-300 hover:bg-red-600 disabled:opacity-20 disabled:cursor-not-allowed text-xs font-bold">+</button>
-                              </div>
-                              <div className="w-[68px]"></div>
-                              <div className="w-[68px]"></div>
-                            </div>
-                          )
-                        })()}
                       </div>
                     </div>
                   ))}
