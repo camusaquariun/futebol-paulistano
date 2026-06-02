@@ -182,8 +182,9 @@ export default function MatchesAdmin() {
   // Per-player stat tally for quick finalize.
   // goals = number (counter). yellow/red = boolean (checkbox).
   const [qfPlayerStats, setQfPlayerStats] = useState<Record<string, { goals: number; yellow: boolean; red: boolean }>>({})
-  const [qfOwnGoalsHome, setQfOwnGoalsHome] = useState(0)
-  const [qfOwnGoalsAway, setQfOwnGoalsAway] = useState(0)
+  // Own goals: list of player_ids per side (one entry per goal). Empty string = unknown player.
+  const [qfOwnGoalsHome, setQfOwnGoalsHome] = useState<string[]>([])
+  const [qfOwnGoalsAway, setQfOwnGoalsAway] = useState<string[]>([])
   // Referees: 1 table + up to 2 field
   const [qfRefTable, setQfRefTable] = useState('')
   const [qfRefField1, setQfRefField1] = useState('')
@@ -508,8 +509,8 @@ export default function MatchesAdmin() {
     setQfAwayFouls2h(match.away_fouls_2h ?? 0)
     setQfMotm(match.motm_player_id ?? '')
     setQfPlayerStats({})
-    setQfOwnGoalsHome(0)
-    setQfOwnGoalsAway(0)
+    setQfOwnGoalsHome([])
+    setQfOwnGoalsAway([])
     setQfPresentPlayers(new Set())
     setQfRosterLoaded(false)
     setQfRatings({})
@@ -535,11 +536,12 @@ export default function MatchesAdmin() {
       .select('player_id, event_type, team_id')
       .eq('match_id', match.id)
     const stats: Record<string, { goals: number; yellow: boolean; red: boolean }> = {}
-    let ownHome = 0, ownAway = 0
+    const ownHome: string[] = []
+    const ownAway: string[] = []
     for (const e of existingEvents ?? []) {
       if (e.event_type === 'own_goal') {
-        if (e.team_id === match.home_team_id) ownHome++
-        else if (e.team_id === match.away_team_id) ownAway++
+        if (e.team_id === match.home_team_id) ownHome.push(e.player_id ?? '')
+        else if (e.team_id === match.away_team_id) ownAway.push(e.player_id ?? '')
         continue
       }
       if (!e.player_id) continue
@@ -587,8 +589,8 @@ export default function MatchesAdmin() {
       else if (p.teamId === qfMatch?.away_team_id) awayGoals += g
     }
     // own goal committed by home team -> point for away
-    awayGoals += qfOwnGoalsHome
-    homeGoals += qfOwnGoalsAway
+    awayGoals += qfOwnGoalsHome.length
+    homeGoals += qfOwnGoalsAway.length
     return { home: homeGoals, away: awayGoals }
   }, [qfPlayerStats, qfOwnGoalsHome, qfOwnGoalsAway, qfAllPlayers, qfMatch])
 
@@ -639,12 +641,12 @@ export default function MatchesAdmin() {
         events.push({ match_id: qfMatch.id, team_id: player.teamId, event_type: 'red_card', player_id: playerId, minute: 0, half: 1 })
       }
     }
-    // Own goals (no player)
-    for (let i = 0; i < qfOwnGoalsHome; i++) {
-      events.push({ match_id: qfMatch.id, team_id: qfMatch.home_team_id, event_type: 'own_goal', player_id: null, minute: 0, half: 1 })
+    // Own goals (optional player_id per entry)
+    for (const pid of qfOwnGoalsHome) {
+      events.push({ match_id: qfMatch.id, team_id: qfMatch.home_team_id, event_type: 'own_goal', player_id: pid || null, minute: 0, half: 1 })
     }
-    for (let i = 0; i < qfOwnGoalsAway; i++) {
-      events.push({ match_id: qfMatch.id, team_id: qfMatch.away_team_id, event_type: 'own_goal', player_id: null, minute: 0, half: 1 })
+    for (const pid of qfOwnGoalsAway) {
+      events.push({ match_id: qfMatch.id, team_id: qfMatch.away_team_id, event_type: 'own_goal', player_id: pid || null, minute: 0, half: 1 })
     }
     if (events.length > 0) {
       const { error: evErr } = await supabase.from('match_events').insert(events)
@@ -1215,27 +1217,46 @@ export default function MatchesAdmin() {
                           <span title="Cartões vermelhos">🟥</span>
                         </div>
                       </div>
-                      {/* Own goal row (rendered at the top so it's visible without scrolling) */}
+                      {/* Own goals (list at top — can be multiple, with optional player selection) */}
                       {(() => {
                         const isHomeSide = side.teamId === qfMatch?.home_team_id
                         const oppLimit = isHomeSide ? qfAwayScore : qfHomeScore
                         const oppAttributed = isHomeSide ? qfGoalsAttributed.away : qfGoalsAttributed.home
-                        const plusOwnDisabled = oppAttributed >= oppLimit
+                        const addDisabled = oppAttributed >= oppLimit
+                        const teamPlayers = (side.roster ?? []).map((pt: any) => pt.player!).filter(Boolean)
                         return (
-                          <div className="flex items-center gap-2 py-1.5 px-2 mb-1.5 rounded bg-red-500/5 border border-red-500/20">
-                            <span className="text-[11px] text-red-300 flex-1">
-                              ⚽ Gol contra (jogador desconhecido)
-                            </span>
-                            <div className="flex items-center gap-0.5">
-                              <button type="button" onClick={() => side.setOwnGoals(Math.max(0, side.ownGoals - 1))}
-                                disabled={side.ownGoals === 0}
-                                className="w-6 h-6 rounded bg-slate-700 text-slate-400 hover:bg-slate-600 disabled:opacity-20 text-xs font-bold">−</button>
-                              <span className={`w-5 text-center text-xs font-bold ${side.ownGoals > 0 ? 'text-red-400' : 'text-slate-600'}`}>{side.ownGoals}</span>
-                              <button type="button" onClick={() => side.setOwnGoals(side.ownGoals + 1)}
-                                disabled={plusOwnDisabled}
-                                title={plusOwnDisabled ? `Placar adversário já é ${oppLimit}` : ''}
-                                className="w-6 h-6 rounded bg-slate-700 text-slate-300 hover:bg-red-600 disabled:opacity-20 disabled:cursor-not-allowed text-xs font-bold">+</button>
+                          <div className="mb-1.5 rounded bg-red-500/5 border border-red-500/20 p-2 space-y-1">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[11px] text-red-300">⚽ Gols contra ({side.ownGoals.length})</span>
+                              <button type="button"
+                                onClick={() => side.setOwnGoals([...side.ownGoals, ''])}
+                                disabled={addDisabled}
+                                title={addDisabled ? `Placar adversário já é ${oppLimit}` : 'Adicionar gol contra'}
+                                className="text-[10px] px-2 py-0.5 rounded bg-red-600/30 text-red-300 hover:bg-red-600/50 disabled:opacity-30 disabled:cursor-not-allowed font-medium">
+                                + Adicionar
+                              </button>
                             </div>
+                            {side.ownGoals.map((pid: string, idx: number) => (
+                              <div key={idx} className="flex items-center gap-1.5">
+                                <select
+                                  value={pid}
+                                  onChange={e => {
+                                    const next = [...side.ownGoals]
+                                    next[idx] = e.target.value
+                                    side.setOwnGoals(next)
+                                  }}
+                                  className="flex-1 bg-navy-700 border border-navy-600 rounded px-2 py-1 text-xs text-white">
+                                  <option value="">— Jogador desconhecido —</option>
+                                  {teamPlayers.map((p: any) => (
+                                    <option key={p.id} value={p.id}>{p.name}</option>
+                                  ))}
+                                </select>
+                                <button type="button"
+                                  onClick={() => side.setOwnGoals(side.ownGoals.filter((_: any, i: number) => i !== idx))}
+                                  className="w-6 h-6 rounded bg-red-600/30 text-red-300 hover:bg-red-600/50 text-xs font-bold"
+                                  title="Remover gol contra">✕</button>
+                              </div>
+                            ))}
                           </div>
                         )
                       })()}
