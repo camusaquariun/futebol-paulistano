@@ -187,6 +187,19 @@ export function PublicLayout() {
         </div>
       </main>
 
+      {/* Patrocinadores: faixa edge-to-edge para evitar emenda de fundo */}
+      <section aria-label="Patrocinadores" className="border-t border-navy-800">
+        <p className="text-center text-[10px] uppercase tracking-[0.2em] text-slate-500 pt-4 pb-2">
+          Patrocinadores Oficiais
+        </p>
+        <img
+          src="/sponsors-banner.png"
+          alt="Patrocinadores: PROcontaty, PrimeCall BPO, Made Nova, K Projetos Especiais, TSCardoso"
+          className="w-full max-w-4xl mx-auto h-auto block select-none px-4"
+          loading="lazy"
+        />
+      </section>
+
       <footer className="border-t border-navy-800 py-6">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 text-center text-sm text-slate-500">
           Futebol Paulistano &copy; {new Date().getFullYear()} — Campeonato de futebol do condomínio
