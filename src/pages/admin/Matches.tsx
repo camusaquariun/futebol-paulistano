@@ -212,13 +212,38 @@ export default function MatchesAdmin() {
     return [...home, ...away]
   }, [qfHomeRoster, qfAwayRoster, qfMatch])
 
-  // Auto-initialize all players as present when roster loads
+  // Suspended players in this match's category (server-side restriction is by category+team).
+  const { data: qfSuspendedSet } = useQuery({
+    queryKey: ['qf_suspended', qfMatch?.id, qfMatch?.championship_id, qfMatch?.category_id],
+    queryFn: async () => {
+      if (!qfMatch?.championship_id || !qfMatch?.category_id) return new Set<string>()
+      const teamIds = [qfMatch.home_team_id, qfMatch.away_team_id].filter(Boolean)
+      // Get every player_id that has a player_teams row in one of these teams + category
+      const { data: pts } = await supabase.from('player_teams')
+        .select('player_id')
+        .in('team_id', teamIds)
+        .eq('category_id', qfMatch.category_id)
+      const playerIds = (pts ?? []).map((r: any) => r.player_id)
+      if (playerIds.length === 0) return new Set<string>()
+      const { data: sus } = await supabase.from('suspensions')
+        .select('player_id')
+        .eq('championship_id', qfMatch.championship_id)
+        .eq('category_id', qfMatch.category_id)
+        .eq('served', false)
+        .in('player_id', playerIds)
+      return new Set((sus ?? []).map((s: any) => s.player_id))
+    },
+    enabled: !!qfMatch?.id,
+  })
+
+  // Auto-initialize all NON-SUSPENDED players as present when roster loads
   useEffect(() => {
-    if (qfOpen && !qfRosterLoaded && qfAllPlayers.length > 0) {
-      setQfPresentPlayers(new Set(qfAllPlayers.map(p => p.id)))
+    if (qfOpen && !qfRosterLoaded && qfAllPlayers.length > 0 && qfSuspendedSet != null) {
+      const present = new Set(qfAllPlayers.filter(p => !qfSuspendedSet.has(p.id)).map(p => p.id))
+      setQfPresentPlayers(present)
       setQfRosterLoaded(true)
     }
-  }, [qfOpen, qfRosterLoaded, qfAllPlayers])
+  }, [qfOpen, qfRosterLoaded, qfAllPlayers, qfSuspendedSet])
 
   const toggleQfPresent = (playerId: string) => {
     setQfPresentPlayers(prev => {
@@ -653,6 +678,53 @@ export default function MatchesAdmin() {
       if (evErr) { alert('Erro ao salvar eventos: ' + evErr.message); setQfSaving(false); return }
     }
 
+    // Wipe previous auto-generated suspensions and food donations originating from this match,
+    // then regenerate them based on the freshly saved events.
+    await supabase.from('suspensions').delete().eq('match_id_origin', qfMatch.id)
+    await supabase.from('food_donations').delete().eq('match_id', qfMatch.id)
+
+    const processed = new Set<string>()
+    for (const e of events) {
+      if (e.event_type === 'red_card' && e.player_id) {
+        await supabase.from('suspensions').insert({
+          player_id: e.player_id, championship_id: qfMatch.championship_id,
+          category_id: qfMatch.category_id, match_id_origin: qfMatch.id,
+          reason: 'red_card', served: false,
+        })
+        if (!processed.has(`red_${e.player_id}`)) {
+          processed.add(`red_${e.player_id}`)
+          await supabase.from('food_donations').upsert({
+            match_id: qfMatch.id, player_id: e.player_id,
+            championship_id: qfMatch.championship_id, category_id: qfMatch.category_id,
+            reason: 'red_card', required_kg: 15,
+          }, { onConflict: 'match_id,player_id,reason' })
+        }
+      }
+      if (e.event_type === 'yellow_card' && e.player_id) {
+        if (!processed.has(`yellow_${e.player_id}`)) {
+          processed.add(`yellow_${e.player_id}`)
+          await supabase.from('food_donations').upsert({
+            match_id: qfMatch.id, player_id: e.player_id,
+            championship_id: qfMatch.championship_id, category_id: qfMatch.category_id,
+            reason: 'yellow_card', required_kg: 5,
+          }, { onConflict: 'match_id,player_id,reason' })
+        }
+        const { data: yc } = await supabase.from('player_yellow_counts').select('yellow_count')
+          .eq('player_id', e.player_id).eq('championship_id', qfMatch.championship_id)
+          .eq('category_id', qfMatch.category_id).maybeSingle()
+        if (yc && (yc as any).yellow_count >= 3) {
+          await supabase.from('suspensions').insert({
+            player_id: e.player_id, championship_id: qfMatch.championship_id,
+            category_id: qfMatch.category_id, match_id_origin: qfMatch.id,
+            reason: 'three_yellows', served: false,
+          })
+        }
+      }
+    }
+
+    // Recalculate bolão points for this match
+    await supabase.rpc('calculate_pool_points', { p_match_id: qfMatch.id })
+
     // Save referees: replace existing assignments. Include ratings/notes for field refs.
     await supabase.from('match_referees').delete().eq('match_id', qfMatch.id)
     const refRows: any[] = []
@@ -686,6 +758,9 @@ export default function MatchesAdmin() {
     queryClient.invalidateQueries({ queryKey: ['match_goals_bulk'] })
     queryClient.invalidateQueries({ queryKey: ['match_motm_bulk'] })
     queryClient.invalidateQueries({ queryKey: ['standings'] })
+    queryClient.invalidateQueries({ queryKey: ['suspensions'] })
+    queryClient.invalidateQueries({ queryKey: ['food_donations'] })
+    queryClient.invalidateQueries({ queryKey: ['pool_match_bets'] })
     setQfSaving(false)
     setQfOpen(false)
   }
@@ -747,6 +822,62 @@ export default function MatchesAdmin() {
     }
     return map
   }, [motmData])
+
+  // Suspensions for upcoming matches
+  const { data: openSuspensions } = useQuery({
+    queryKey: ['suspensions_unserved', championshipId],
+    queryFn: async () => {
+      const { data } = await supabase.from('suspensions')
+        .select('player_id, category_id, match_id_origin, reason, player:players(name)')
+        .eq('championship_id', championshipId!)
+        .eq('served', false)
+      return data ?? []
+    },
+    enabled: !!championshipId,
+  })
+
+  const { data: allPlayerTeams } = useQuery({
+    queryKey: ['player_teams_all_for_susp', championshipId],
+    queryFn: async () => {
+      // Only player_teams for teams in this championship
+      const { data: teams } = await supabase.from('teams').select('id').eq('championship_id', championshipId!)
+      const teamIds = (teams ?? []).map(t => t.id)
+      if (teamIds.length === 0) return [] as any[]
+      const { data } = await supabase.from('player_teams')
+        .select('player_id, team_id, category_id')
+        .in('team_id', teamIds)
+      return data ?? []
+    },
+    enabled: !!championshipId,
+  })
+
+  // Map match_id -> suspended player names (only on the NEXT scheduled match
+  // per (player, team, category) after the suspension's origin match).
+  const suspendedByMatch = useMemo(() => {
+    const map = new Map<string, { name: string; reason: string }[]>()
+    if (!openSuspensions || !allPlayerTeams || !matches) return map
+    const matchById = new Map(matches.map(m => [m.id, m]))
+    for (const sus of openSuspensions as any[]) {
+      // Find player's team in the suspension's category
+      const link = allPlayerTeams.find((pt: any) =>
+        pt.player_id === sus.player_id && pt.category_id === sus.category_id)
+      if (!link) continue
+      const origin = sus.match_id_origin ? matchById.get(sus.match_id_origin) : null
+      const originDate = origin?.match_date ? new Date(origin.match_date).getTime() : 0
+      const candidates = matches.filter(m =>
+        m.status === 'scheduled'
+        && m.category_id === sus.category_id
+        && (m.home_team_id === link.team_id || m.away_team_id === link.team_id)
+        && m.match_date && new Date(m.match_date).getTime() > originDate
+      ).sort((a, b) => new Date(a.match_date!).getTime() - new Date(b.match_date!).getTime())
+      const next = candidates[0]
+      if (!next) continue
+      const arr = map.get(next.id) ?? []
+      arr.push({ name: (sus.player as any)?.name ?? '?', reason: sus.reason })
+      map.set(next.id, arr)
+    }
+    return map
+  }, [openSuspensions, allPlayerTeams, matches])
 
   const filtered = matches?.filter(m =>
     (filterPhase === 'all' || m.phase === filterPhase) &&
@@ -852,6 +983,18 @@ export default function MatchesAdmin() {
                   ) : (
                     <p className="text-xs text-gold-400/60 mt-1">Sem data definida</p>
                   )}
+                  {match.status === 'scheduled' && (() => {
+                    const sus = suspendedByMatch.get(match.id)
+                    if (!sus || sus.length === 0) return null
+                    return (
+                      <div className="mt-1.5 flex items-start gap-1 text-[11px] text-red-300">
+                        <span className="font-semibold">🚫 Suspensos:</span>
+                        <span>{sus.map((s, i) => (
+                          <span key={i}>{i > 0 ? ', ' : ''}{s.name}<span className="text-red-400/60"> ({s.reason === 'red_card' ? 'vermelho' : '3 amarelos'})</span></span>
+                        ))}</span>
+                      </div>
+                    )
+                  })()}
                   {match.status === 'finished' && (() => {
                     const goals = goalsByMatch.get(match.id)
                     const motm = motmByMatch.get(match.id)
@@ -1188,7 +1331,7 @@ export default function MatchesAdmin() {
                   </Label>
                   <div className="flex gap-2">
                     <button type="button"
-                      onClick={() => setQfPresentPlayers(new Set(qfAllPlayers.map(p => p.id)))}
+                      onClick={() => setQfPresentPlayers(new Set(qfAllPlayers.filter(p => !qfSuspendedSet?.has(p.id)).map(p => p.id)))}
                       className="text-[10px] text-pitch-400 hover:text-pitch-300">
                       Todos
                     </button>
@@ -1263,46 +1406,49 @@ export default function MatchesAdmin() {
                       <div className="space-y-1">
                         {(side.roster ?? []).map(pt => {
                           const p = pt.player!
-                          const present = qfPresentPlayers.has(p.id)
+                          const isSuspended = qfSuspendedSet?.has(p.id) ?? false
+                          const present = qfPresentPlayers.has(p.id) && !isSuspended
                           const stats = qfPlayerStats[p.id] ?? { goals: 0, yellow: false, red: false }
                           const isHomeSide = side.teamId === qfMatch?.home_team_id
                           const teamScoreLimit = isHomeSide ? qfHomeScore : qfAwayScore
                           const teamAttributed = isHomeSide ? qfGoalsAttributed.home : qfGoalsAttributed.away
                           const goalAtLimit = teamAttributed >= teamScoreLimit
                           return (
-                            <div key={p.id} className={`flex items-center gap-2 py-1 px-1 rounded ${present ? '' : 'opacity-60'}`}>
+                            <div key={p.id} className={`flex items-center gap-2 py-1 px-1 rounded ${isSuspended ? 'opacity-50 bg-red-900/20' : present ? '' : 'opacity-60'}`} title={isSuspended ? 'Jogador suspenso — não pode participar desta partida' : ''}>
                               <input
                                 type="checkbox"
                                 checked={present}
+                                disabled={isSuspended}
                                 onChange={() => toggleQfPresent(p.id)}
-                                className="accent-green-500 flex-shrink-0"
+                                className="accent-green-500 flex-shrink-0 disabled:cursor-not-allowed"
                               />
-                              <span className={`text-xs flex-1 truncate ${present ? 'text-white' : 'text-slate-500 line-through'}`}>
+                              <span className={`text-xs flex-1 truncate ${isSuspended ? 'text-red-400 line-through' : present ? 'text-white' : 'text-slate-500 line-through'}`}>
                                 {pt.jersey_number != null && <span className="text-slate-500 mr-1">#{pt.jersey_number}</span>}
                                 {p.name}
+                                {isSuspended && <span className="ml-1 text-[9px] uppercase font-bold text-red-400">🚫 Suspenso</span>}
                               </span>
                               {/* Goals: counter */}
                               <div className="flex items-center gap-0.5">
                                 <button type="button"
                                   onClick={() => bumpPlayerGoals(p.id, -1)}
-                                  disabled={!present || stats.goals === 0}
+                                  disabled={isSuspended || !present || stats.goals === 0}
                                   className="w-6 h-6 rounded bg-slate-700 text-slate-400 hover:bg-slate-600 disabled:opacity-20 disabled:cursor-not-allowed text-xs font-bold">−</button>
                                 <span className={`w-5 text-center text-xs font-bold ${stats.goals > 0 ? 'text-pitch-400' : 'text-slate-600'}`}>{stats.goals}</span>
                                 <button type="button"
                                   onClick={() => { if (!present) toggleQfPresent(p.id); bumpPlayerGoals(p.id, 1) }}
-                                  disabled={goalAtLimit}
-                                  title={goalAtLimit ? `Placar do time já é ${teamScoreLimit}` : ''}
+                                  disabled={isSuspended || goalAtLimit}
+                                  title={isSuspended ? 'Jogador suspenso' : goalAtLimit ? `Placar do time já é ${teamScoreLimit}` : ''}
                                   className="w-6 h-6 rounded bg-slate-700 text-slate-300 hover:bg-pitch-600 disabled:opacity-20 disabled:cursor-not-allowed text-xs font-bold">+</button>
                               </div>
                               {/* Yellow card: checkbox */}
-                              <label className="inline-flex items-center justify-center w-6 h-6 cursor-pointer" title="Cartão amarelo">
-                                <input type="checkbox" className="sr-only" checked={stats.yellow}
+                              <label className={`inline-flex items-center justify-center w-6 h-6 ${isSuspended ? 'cursor-not-allowed opacity-30' : 'cursor-pointer'}`} title={isSuspended ? 'Jogador suspenso' : 'Cartão amarelo'}>
+                                <input type="checkbox" className="sr-only" checked={stats.yellow} disabled={isSuspended}
                                   onChange={() => { if (!present) toggleQfPresent(p.id); togglePlayerCard(p.id, 'yellow') }} />
                                 <span className={`block w-4 h-5 rounded-[2px] border ${stats.yellow ? 'bg-yellow-400 border-yellow-300' : 'border-slate-600 bg-transparent'}`} />
                               </label>
                               {/* Red card: checkbox */}
-                              <label className="inline-flex items-center justify-center w-6 h-6 cursor-pointer" title="Cartão vermelho">
-                                <input type="checkbox" className="sr-only" checked={stats.red}
+                              <label className={`inline-flex items-center justify-center w-6 h-6 ${isSuspended ? 'cursor-not-allowed opacity-30' : 'cursor-pointer'}`} title={isSuspended ? 'Jogador suspenso' : 'Cartão vermelho'}>
+                                <input type="checkbox" className="sr-only" checked={stats.red} disabled={isSuspended}
                                   onChange={() => { if (!present) toggleQfPresent(p.id); togglePlayerCard(p.id, 'red') }} />
                                 <span className={`block w-4 h-5 rounded-[2px] border ${stats.red ? 'bg-red-500 border-red-400' : 'border-slate-600 bg-transparent'}`} />
                               </label>

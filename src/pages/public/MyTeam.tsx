@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '@/hooks/useAuth'
 import { useMyPlayer, useMyTeams, useTeamRoster, useTeamMatches, useActiveChampionship } from '@/hooks/useSupabase'
 import { supabase } from '@/lib/supabase'
@@ -7,7 +7,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Link } from 'react-router-dom'
-import { Users, Calendar, Shield, Crown, Trophy, ChevronRight, UserCircle, MapPin, Swords, Pencil, Check, X, Loader2 } from 'lucide-react'
+import { Users, Calendar, Shield, Crown, Trophy, ChevronRight, UserCircle, MapPin, Swords, Pencil, Check, X, Loader2, AlertTriangle } from 'lucide-react'
 import { formatDate, phaseLabel } from '@/lib/utils'
 import { TeamBadge } from '@/components/TeamBadge'
 import { PlayerLinkWizard } from '@/components/PlayerLinkWizard'
@@ -76,6 +76,42 @@ function TeamView({ activeLink, myPlayerId, championship }: { activeLink: any; m
   const finishedMatches = matches?.filter((m: Match) => m.status === 'finished') ?? []
   const scheduledMatches = matches?.filter((m: Match) => m.status === 'scheduled') ?? []
 
+  // Suspended players (red card / 3 yellows) — unserved suspensions for this team/category.
+  // We restrict by player IDs in roster so we never show suspensions from another category.
+  const rosterPlayerIds = (roster ?? []).map((pt: PlayerTeam) => pt.player_id)
+  const { data: suspendedList } = useQuery({
+    queryKey: ['my_team_suspensions', teamId, categoryId, championship?.id, rosterPlayerIds.join(',')],
+    queryFn: async () => {
+      if (!championship?.id || !categoryId || rosterPlayerIds.length === 0) return []
+      const { data } = await supabase
+        .from('suspensions')
+        .select('reason, player:players(name)')
+        .eq('championship_id', championship.id)
+        .eq('category_id', categoryId)
+        .eq('served', false)
+        .in('player_id', rosterPlayerIds)
+      return (data ?? []) as unknown as { reason: string; player: { name: string } | null }[]
+    },
+    enabled: !!championship?.id && !!categoryId && rosterPlayerIds.length > 0,
+  })
+
+  // "Pendurados" — players with 2 yellows accumulated (one away from a 3-yellow suspension).
+  const { data: penduradosList } = useQuery({
+    queryKey: ['my_team_pendurados', teamId, categoryId, championship?.id, rosterPlayerIds.join(',')],
+    queryFn: async () => {
+      if (!championship?.id || !categoryId || rosterPlayerIds.length === 0) return []
+      const { data } = await supabase
+        .from('player_yellow_counts')
+        .select('yellow_count, player:players(name)')
+        .eq('championship_id', championship.id)
+        .eq('category_id', categoryId)
+        .gte('yellow_count', 2)
+        .in('player_id', rosterPlayerIds)
+      return (data ?? []) as unknown as { yellow_count: number; player: { name: string } | null }[]
+    },
+    enabled: !!championship?.id && !!categoryId && rosterPlayerIds.length > 0,
+  })
+
   // Editing state for positions
   const queryClient = useQueryClient()
   const [editingPlayerTeamId, setEditingPlayerTeamId] = useState<string | null>(null)
@@ -141,6 +177,63 @@ function TeamView({ activeLink, myPlayerId, championship }: { activeLink: any; m
           </Button>
         </Link>
       </div>
+
+      {/* Disciplinary dashboard */}
+      {((suspendedList?.length ?? 0) > 0 || (penduradosList?.length ?? 0) > 0) && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Card className="border-red-500/30 bg-red-500/5">
+            <CardContent className="p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <Shield className="h-4 w-4 text-red-400" />
+                <span className="text-xs font-semibold text-red-300 uppercase tracking-wide">
+                  Suspensos próximo jogo ({suspendedList?.length ?? 0})
+                </span>
+              </div>
+              {(suspendedList?.length ?? 0) === 0 ? (
+                <p className="text-xs text-slate-500">Ninguém suspenso 🎉</p>
+              ) : (
+                <ul className="space-y-1 text-sm">
+                  {suspendedList!.map((s, i) => (
+                    <li key={i} className="flex items-center justify-between gap-2">
+                      <span className="text-white truncate">{s.player?.name ?? '?'}</span>
+                      <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
+                        {s.reason === 'red_card' ? 'Vermelho' : '3 amarelos'}
+                      </Badge>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="border-yellow-500/30 bg-yellow-500/5">
+            <CardContent className="p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <AlertTriangle className="h-4 w-4 text-yellow-400" />
+                <span className="text-xs font-semibold text-yellow-300 uppercase tracking-wide">
+                  Pendurados ({penduradosList?.length ?? 0})
+                </span>
+              </div>
+              {(penduradosList?.length ?? 0) === 0 ? (
+                <p className="text-xs text-slate-500">Ninguém pendurado</p>
+              ) : (
+                <ul className="space-y-1 text-sm">
+                  {penduradosList!.map((p, i) => (
+                    <li key={i} className="flex items-center justify-between gap-2">
+                      <span className="text-white truncate">{p.player?.name ?? '?'}</span>
+                      <span className="flex items-center gap-0.5">
+                        {Array.from({ length: p.yellow_count }).map((_, j) => (
+                          <span key={j} className="inline-block w-2 h-3 bg-yellow-400 rounded-[1px]" />
+                        ))}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Two-column grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { Link, Outlet, useLocation } from 'react-router-dom'
-import { Trophy, BarChart3, Calendar, Target, ShieldAlert, LogIn, Users, Swords, Ticket, Gavel, Sun, Moon, Menu, X, UserCircle } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { Trophy, BarChart3, Calendar, Target, ShieldAlert, LogIn, Users, Swords, Ticket, Gavel, Sun, Moon, Menu, X, UserCircle, CalendarDays } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/useAuth'
 import { useTheme } from '@/hooks/useTheme'
+import { supabase } from '@/lib/supabase'
 
 const navItems = [
   { path: '/', label: 'Início', icon: Trophy },
@@ -21,10 +23,24 @@ export function PublicLayout() {
   const { theme, toggleTheme } = useTheme()
   const [menuOpen, setMenuOpen] = useState(false)
 
+  // Is the logged-in user registered as a referee?
+  const { data: isReferee } = useQuery({
+    queryKey: ['am_i_referee', user?.id],
+    queryFn: async () => {
+      if (!user) return false
+      const { data } = await supabase.from('referees').select('id').eq('user_id', user.id).limit(1)
+      return (data?.length ?? 0) > 0
+    },
+    enabled: !!user,
+  })
+
   const allNavItems = [
     ...navItems,
     ...(user ? [
       { path: '/meu-time', label: 'Meu Time', icon: Users },
+      { path: '/meus-jogos', label: 'Meus Jogos', icon: CalendarDays },
+    ] : []),
+    ...(user && isReferee ? [
       { path: '/arbitragem', label: 'Arbitragem', icon: Gavel },
     ] : []),
   ]
