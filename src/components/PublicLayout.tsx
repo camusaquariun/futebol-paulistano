@@ -1,29 +1,47 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, Outlet, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Trophy, BarChart3, Calendar, Target, ShieldAlert, LogIn, Users, Swords, Ticket, Gavel, Sun, Moon, Menu, X, UserCircle, CalendarDays } from 'lucide-react'
+import { BarChart3, Calendar, Target, ShieldAlert, LogIn, Users, Ticket, Gavel, Menu, X, UserCircle, CalendarDays, Trophy, ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/useAuth'
-import { useTheme } from '@/hooks/useTheme'
 import { supabase } from '@/lib/supabase'
 
-const navItems = [
-  { path: '/', label: 'Início', icon: Trophy },
+const championshipItems = [
   { path: '/classificacao', label: 'Classificação', icon: BarChart3 },
   { path: '/jogos', label: 'Jogos', icon: Calendar },
   { path: '/artilharia', label: 'Artilharia', icon: Target },
   { path: '/suspensoes', label: 'Suspensões', icon: ShieldAlert },
-  { path: '/amistosos', label: 'Amistosos', icon: Swords },
+]
+
+const topNav = [
   { path: '/bolao', label: 'Bolão', icon: Ticket },
 ]
 
 export function PublicLayout() {
   const location = useLocation()
   const { user, isAdmin } = useAuth()
-  const { theme, toggleTheme } = useTheme()
   const [menuOpen, setMenuOpen] = useState(false)
+  const [champOpen, setChampOpen] = useState(false)
+  const champRef = useRef<HTMLDivElement>(null)
 
-  // Is the logged-in user registered as a referee?
+  // Close the "Campeonato" dropdown when clicking outside
+  useEffect(() => {
+    if (!champOpen) return
+    const onClick = (e: MouseEvent) => {
+      if (champRef.current && !champRef.current.contains(e.target as Node)) {
+        setChampOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onClick)
+    return () => document.removeEventListener('mousedown', onClick)
+  }, [champOpen])
+
+  // Close dropdowns on route change
+  useEffect(() => {
+    setChampOpen(false)
+    setMenuOpen(false)
+  }, [location.pathname])
+
   const { data: isReferee } = useQuery({
     queryKey: ['am_i_referee', user?.id],
     queryFn: async () => {
@@ -34,8 +52,7 @@ export function PublicLayout() {
     enabled: !!user,
   })
 
-  const allNavItems = [
-    ...navItems,
+  const userNav = [
     ...(user ? [
       { path: '/meu-time', label: 'Meu Time', icon: Users },
       { path: '/meus-jogos', label: 'Meus Jogos', icon: CalendarDays },
@@ -45,29 +62,74 @@ export function PublicLayout() {
     ] : []),
   ]
 
+  const champActive = championshipItems.some(i => location.pathname.startsWith(i.path))
+
   return (
     <div className="min-h-screen flex flex-col">
       <header className="sticky top-0 z-40 border-b border-navy-700 bg-navy-950/95 backdrop-blur supports-[backdrop-filter]:bg-navy-950/80">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="flex items-center justify-between h-16">
-            {/* Logo */}
-            <Link to="/" className="flex items-center gap-2 flex-shrink-0" aria-label="Copa do Mundo Paulistano">
+          <div className="flex items-center justify-between h-20">
+            {/* Logo (também leva pra home) */}
+            <Link to="/" className="flex items-center gap-2 flex-shrink-0" aria-label="Copa do Mundo Paulistano — Início">
               <img
                 src="/Logo-oficial-azul.png"
                 alt="Copa do Mundo Paulistano"
-                className="h-12 w-auto"
+                className="h-16 w-auto"
               />
             </Link>
 
             {/* Desktop nav */}
             <nav className="hidden md:flex items-center gap-1">
-              {allNavItems.map(({ path, label, icon: Icon }) => (
+              {/* Campeonato dropdown */}
+              <div className="relative" ref={champRef}>
+                <button
+                  type="button"
+                  onClick={() => setChampOpen(o => !o)}
+                  className={cn(
+                    'flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
+                    champActive
+                      ? 'bg-pitch-600/20 text-pitch-400'
+                      : 'text-slate-400 hover:text-white hover:bg-navy-800'
+                  )}
+                  aria-haspopup="menu"
+                  aria-expanded={champOpen}
+                >
+                  <Trophy className="h-4 w-4" />
+                  <span>Campeonato</span>
+                  <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', champOpen && 'rotate-180')} />
+                </button>
+                {champOpen && (
+                  <div
+                    role="menu"
+                    className="absolute left-0 mt-2 w-56 rounded-lg border border-navy-700 bg-navy-950 shadow-xl shadow-black/40 py-1"
+                  >
+                    {championshipItems.map(({ path, label, icon: Icon }) => (
+                      <Link
+                        key={path}
+                        to={path}
+                        role="menuitem"
+                        className={cn(
+                          'flex items-center gap-2.5 px-3 py-2 text-sm transition-colors',
+                          location.pathname.startsWith(path)
+                            ? 'bg-pitch-600/20 text-pitch-400'
+                            : 'text-slate-300 hover:text-white hover:bg-navy-800'
+                        )}
+                      >
+                        <Icon className="h-4 w-4" />
+                        <span>{label}</span>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {[...topNav, ...userNav].map(({ path, label, icon: Icon }) => (
                 <Link
                   key={path}
                   to={path}
                   className={cn(
                     'flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
-                    location.pathname === path || (path !== '/' && location.pathname.startsWith(path))
+                    location.pathname === path || location.pathname.startsWith(path + '/')
                       ? 'bg-pitch-600/20 text-pitch-400'
                       : 'text-slate-400 hover:text-white hover:bg-navy-800'
                   )}
@@ -76,13 +138,7 @@ export function PublicLayout() {
                   <span>{label}</span>
                 </Link>
               ))}
-              <button
-                onClick={toggleTheme}
-                className="ml-1 p-2 rounded-lg text-slate-400 hover:text-white hover:bg-navy-800 transition-colors"
-                title={theme === 'dark' ? 'Modo claro' : 'Modo escuro'}
-              >
-                {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-              </button>
+
               {user && (
                 <Link
                   to="/meu-perfil"
@@ -111,15 +167,8 @@ export function PublicLayout() {
               </Link>
             </nav>
 
-            {/* Mobile right side */}
+            {/* Mobile hamburger */}
             <div className="flex items-center gap-1 md:hidden">
-              <button
-                onClick={toggleTheme}
-                className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-navy-800 transition-colors"
-                title={theme === 'dark' ? 'Modo claro' : 'Modo escuro'}
-              >
-                {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-              </button>
               <button
                 onClick={() => setMenuOpen(o => !o)}
                 className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-navy-800 transition-colors"
@@ -135,14 +184,15 @@ export function PublicLayout() {
         {menuOpen && (
           <div className="md:hidden border-t border-navy-700 bg-navy-950">
             <nav className="px-4 py-3 space-y-1">
-              {allNavItems.map(({ path, label, icon: Icon }) => (
+              <p className="text-[10px] uppercase tracking-wider text-slate-500 px-3 pt-2 pb-1">Campeonato</p>
+              {championshipItems.map(({ path, label, icon: Icon }) => (
                 <Link
                   key={path}
                   to={path}
                   onClick={() => setMenuOpen(false)}
                   className={cn(
                     'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
-                    location.pathname === path || (path !== '/' && location.pathname.startsWith(path))
+                    location.pathname.startsWith(path)
                       ? 'bg-pitch-600/20 text-pitch-400'
                       : 'text-slate-400 hover:text-white hover:bg-navy-800'
                   )}
@@ -151,6 +201,25 @@ export function PublicLayout() {
                   {label}
                 </Link>
               ))}
+
+              <p className="text-[10px] uppercase tracking-wider text-slate-500 px-3 pt-3 pb-1">Outros</p>
+              {[...topNav, ...userNav].map(({ path, label, icon: Icon }) => (
+                <Link
+                  key={path}
+                  to={path}
+                  onClick={() => setMenuOpen(false)}
+                  className={cn(
+                    'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+                    location.pathname === path || location.pathname.startsWith(path + '/')
+                      ? 'bg-pitch-600/20 text-pitch-400'
+                      : 'text-slate-400 hover:text-white hover:bg-navy-800'
+                  )}
+                >
+                  <Icon className="h-4 w-4" />
+                  {label}
+                </Link>
+              ))}
+
               {user && (
                 <Link
                   to="/meu-perfil"
