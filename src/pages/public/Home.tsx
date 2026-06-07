@@ -50,7 +50,12 @@ export default function Home() {
   return (
     <div className="space-y-10">
       {/* Hero */}
-      <div className="text-center py-12 sm:py-16">
+      <div className="text-center py-8 sm:py-12">
+        <img
+          src="/Logo-oficial-azul.png"
+          alt="Copa do Mundo Paulistano"
+          className="mx-auto h-40 sm:h-56 md:h-64 w-auto mb-6 drop-shadow-2xl"
+        />
         <div className="inline-flex items-center gap-3 bg-pitch-600/10 border border-pitch-600/30 rounded-full px-6 py-2 mb-6">
           <Trophy className="h-5 w-5 text-gold-400" />
           <span className="text-pitch-300 text-sm font-medium">Campeonato Oficial</span>

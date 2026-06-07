@@ -51,9 +51,12 @@ export function PublicLayout() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="flex items-center justify-between h-16">
             {/* Logo */}
-            <Link to="/" className="flex items-center gap-2 flex-shrink-0">
-              <Trophy className="h-7 w-7 text-pitch-400" />
-              <span className="text-lg font-bold text-white hidden sm:block">Futebol Paulistano</span>
+            <Link to="/" className="flex items-center gap-2 flex-shrink-0" aria-label="Copa do Mundo Paulistano">
+              <img
+                src="/Logo-oficial-azul.png"
+                alt="Copa do Mundo Paulistano"
+                className="h-12 w-auto"
+              />
             </Link>
 
             {/* Desktop nav */}
@@ -180,6 +183,15 @@ export function PublicLayout() {
           </div>
         )}
       </header>
+
+      {/* Patrocinadores: faixa fina no topo, abaixo do header */}
+      <section aria-label="Patrocinadores" className="border-b border-navy-800">
+        <img
+          src="/sponsors-banner.png"
+          alt="Patrocinadores: PROcontaty, PrimeCall BPO, Made Nova, K Projetos Especiais, TSCardoso"
+          className="w-full max-w-3xl mx-auto h-auto block select-none px-4 py-2"
+        />
+      </section>
 
       <main className="flex-1">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
