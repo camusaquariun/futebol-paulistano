@@ -68,18 +68,18 @@ export function PublicLayout() {
     <div className="min-h-screen flex flex-col">
       <header className="sticky top-0 z-40 border-b border-navy-700 bg-navy-950/95 backdrop-blur supports-[backdrop-filter]:bg-navy-950/80">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="flex items-center justify-between h-20">
+          <div className="flex items-center gap-6 h-32">
             {/* Logo (também leva pra home) */}
             <Link to="/" className="flex items-center gap-2 flex-shrink-0" aria-label="Copa do Mundo Paulistano — Início">
               <img
                 src="/Logo-oficial-azul.png"
                 alt="Copa do Mundo Paulistano"
-                className="h-16 w-auto"
+                className="h-28 w-auto"
               />
             </Link>
 
-            {/* Desktop nav */}
-            <nav className="hidden md:flex items-center gap-1">
+            {/* Desktop nav — colado ao logo */}
+            <nav className="hidden md:flex items-center gap-1 flex-1">
               {/* Campeonato dropdown */}
               <div className="relative" ref={champRef}>
                 <button
@@ -143,7 +143,7 @@ export function PublicLayout() {
                 <Link
                   to="/meu-perfil"
                   className={cn(
-                    'ml-1 flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
+                    'ml-auto flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
                     location.pathname === '/meu-perfil'
                       ? 'bg-pitch-600/20 text-pitch-400'
                       : 'text-slate-400 hover:text-white hover:bg-navy-800'
@@ -157,6 +157,7 @@ export function PublicLayout() {
                 to={user && isAdmin ? '/admin' : '/login'}
                 className={cn(
                   'ml-1 flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
+                  !user && 'ml-auto',
                   user
                     ? 'text-slate-500 hover:text-white hover:bg-navy-800'
                     : 'bg-pitch-600/20 text-pitch-400 hover:bg-pitch-600/30'
@@ -255,10 +256,13 @@ export function PublicLayout() {
 
       {/* Patrocinadores: faixa fina no topo, abaixo do header */}
       <section aria-label="Patrocinadores" className="border-b border-navy-800">
+        <p className="text-center text-[10px] uppercase tracking-[0.2em] text-slate-500 pt-3 pb-1">
+          Patrocinadores Oficiais
+        </p>
         <img
           src="/sponsors-banner.png"
           alt="Patrocinadores: PROcontaty, PrimeCall BPO, Made Nova, K Projetos Especiais, TSCardoso"
-          className="w-full max-w-3xl mx-auto h-auto block select-none px-4 py-2"
+          className="w-full max-w-3xl mx-auto h-auto block select-none px-4 pb-2"
         />
       </section>
 
