@@ -6,6 +6,7 @@ import Standings from '@/pages/public/Standings'
 import Fixtures from '@/pages/public/Fixtures'
 import Scorers from '@/pages/public/Scorers'
 import Suspensions from '@/pages/public/Suspensions'
+import Ranking from '@/pages/public/Ranking'
 import Login from '@/pages/Login'
 import Dashboard from '@/pages/admin/Dashboard'
 import ChampionshipsAdmin from '@/pages/admin/Championships'
@@ -48,6 +49,7 @@ export default function App() {
         <Route path="/jogos" element={<Fixtures />} />
         <Route path="/artilharia" element={<Scorers />} />
         <Route path="/suspensoes" element={<Suspensions />} />
+        <Route path="/ranking" element={<Ranking />} />
         <Route path="/times/:teamId" element={<TeamProfile />} />
         <Route path="/times/:teamId/preparacao/:matchId" element={<PreGame />} />
         <Route path="/partidas/:matchId/ao-vivo" element={<MatchLive />} />

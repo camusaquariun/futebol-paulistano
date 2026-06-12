@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, Outlet, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { BarChart3, Calendar, Target, ShieldAlert, LogIn, Users, Ticket, Gavel, Menu, X, UserCircle, CalendarDays, Trophy, ChevronDown } from 'lucide-react'
+import { BarChart3, Calendar, LogIn, Users, Ticket, Gavel, Menu, X, UserCircle, CalendarDays, Trophy, ChevronDown, Award } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
@@ -9,8 +9,7 @@ import { supabase } from '@/lib/supabase'
 const championshipItems = [
   { path: '/classificacao', label: 'Classificação', icon: BarChart3 },
   { path: '/jogos', label: 'Jogos', icon: Calendar },
-  { path: '/artilharia', label: 'Artilharia', icon: Target },
-  { path: '/suspensoes', label: 'Suspensões', icon: ShieldAlert },
+  { path: '/ranking', label: 'Ranking', icon: Award },
 ]
 
 const topNav = [

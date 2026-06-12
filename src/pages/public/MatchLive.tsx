@@ -200,9 +200,7 @@ export default function MatchLive() {
     const exactCount = betsWithPts.filter(b => b.pts === 15).length
     const scoringCount = betsWithPts.filter(b => b.pts > 0).length
     const lostCount = betsWithPts.filter(b => b.pts === 0).length
-    const top5 = betsWithPts.slice(0, 5)
-
-    return { total: poolBets.length, exactCount, scoringCount, lostCount, top5 }
+    return { total: poolBets.length, exactCount, scoringCount, lostCount, all: betsWithPts }
   }, [poolBets, match?.home_score, match?.away_score, displayNameByUserId])
 
   // Voting state
@@ -548,14 +546,14 @@ export default function MatchLive() {
                     </div>
                   </div>
 
-                  {/* Top 5 */}
-                  {poolStats.top5.length > 0 && (
+                  {/* Todas as apostas */}
+                  {poolStats.all.length > 0 && (
                     <div>
                       <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider mb-2">
-                        Top {poolStats.top5.length} nesta partida
+                        Todas as apostas nesta partida ({poolStats.all.length})
                       </p>
-                      <div className="space-y-1.5">
-                        {poolStats.top5.map((entry, idx) => {
+                      <div className="space-y-1.5 max-h-[420px] overflow-y-auto pr-1">
+                        {poolStats.all.map((entry, idx) => {
                           const tierLabel = POINT_TIER_LABELS[entry.pts as keyof typeof POINT_TIER_LABELS]
                           const tierStyle =
                             entry.pts === 15 ? 'bg-green-500/15 text-green-400 border-green-500/30' :

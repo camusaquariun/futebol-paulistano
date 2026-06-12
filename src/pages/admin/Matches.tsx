@@ -153,6 +153,7 @@ export default function MatchesAdmin() {
   const [evtEditId, setEvtEditId] = useState<string | null>(null)
   const [evtEditType, setEvtEditType] = useState<'goal' | 'own_goal' | 'yellow_card' | 'red_card'>('goal')
   const [evtEditPlayer, setEvtEditPlayer] = useState('')
+  const [evtEditTeam, setEvtEditTeam] = useState('')
   const [evtEditMinute, setEvtEditMinute] = useState('')
   const [evtEditHalf, setEvtEditHalf] = useState(1)
   const [addingEvent, setAddingEvent] = useState(false)
@@ -482,7 +483,7 @@ export default function MatchesAdmin() {
     if (!evtEditId) return
     await supabase.from('match_events').update({
       event_type: evtEditType,
-      player_id: evtEditType === 'own_goal' ? null : (evtEditPlayer || null),
+      player_id: evtEditPlayer || null,
       minute: evtEditMinute ? parseInt(evtEditMinute) : null,
       half: evtEditHalf,
     }).eq('id', evtEditId)
@@ -497,7 +498,7 @@ export default function MatchesAdmin() {
       match_id: eventsMatch.id,
       team_id: newEvtTeam,
       event_type: newEvtType,
-      player_id: newEvtType === 'own_goal' ? null : (newEvtPlayer || null),
+      player_id: newEvtPlayer || null,
       minute: parseInt(newEvtMinute),
       half: newEvtHalf,
     })
@@ -1510,15 +1511,15 @@ export default function MatchesAdmin() {
                             </button>
                           ))}
                         </div>
-                        {evtEditType !== 'own_goal' && (
-                          <select value={evtEditPlayer} onChange={ev => setEvtEditPlayer(ev.target.value)}
-                            className="w-full bg-navy-700 border border-navy-600 rounded px-2 py-1.5 text-sm text-white">
-                            <option value="">— Nenhum —</option>
-                            {eventsAllPlayers.map(p => (
+                        <select value={evtEditPlayer} onChange={ev => setEvtEditPlayer(ev.target.value)}
+                          className="w-full bg-navy-700 border border-navy-600 rounded px-2 py-1.5 text-sm text-white">
+                          <option value="">— Nenhum —</option>
+                          {eventsAllPlayers
+                            .filter(p => !evtEditTeam || p.teamId === evtEditTeam)
+                            .map(p => (
                               <option key={p.id} value={p.id}>{p.jersey_number ? `${p.jersey_number} - ` : ''}{p.name}</option>
                             ))}
-                          </select>
-                        )}
+                        </select>
                         <div className="grid grid-cols-2 gap-2">
                           <input type="number" placeholder="Minuto" value={evtEditMinute} onChange={ev => setEvtEditMinute(ev.target.value)}
                             className="bg-navy-700 border border-navy-600 rounded px-2 py-1.5 text-sm text-white placeholder:text-slate-500" />
@@ -1542,7 +1543,11 @@ export default function MatchesAdmin() {
                           {e.event_type === 'red_card' && '🟥'}
                         </span>
                         <span className="font-medium text-white flex-1">
-                          {e.event_type === 'own_goal' ? <span className="text-red-400">Gol Contra</span> : (e as any).player?.name ?? '?'}
+                          {e.event_type === 'own_goal' ? (
+                            <span className="text-red-400">
+                              {(e as any).player?.name ? `${(e as any).player.name} (G.C.)` : 'Gol Contra'}
+                            </span>
+                          ) : ((e as any).player?.name ?? '?')}
                         </span>
                         <span className="text-slate-500 text-xs">{(e as any).team?.name}</span>
                         <button onClick={() => {
@@ -1551,6 +1556,7 @@ export default function MatchesAdmin() {
                           setEvtEditPlayer(e.player_id ?? '')
                           setEvtEditMinute(String(e.minute ?? ''))
                           setEvtEditHalf(e.half ?? 1)
+                          setEvtEditTeam(e.team_id ?? '')
                         }} className="text-slate-600 hover:text-pitch-400 transition-colors p-1.5 rounded-md hover:bg-pitch-400/10 opacity-0 group-hover:opacity-100" title="Editar">
                           ✏️
                         </button>
@@ -1593,18 +1599,18 @@ export default function MatchesAdmin() {
                     </select>
                   </div>
                 </div>
-                {newEvtType !== 'own_goal' && (
-                  <div>
-                    <label className="text-xs text-slate-400 mb-1 block">Jogador</label>
-                    <select value={newEvtPlayer} onChange={ev => setNewEvtPlayer(ev.target.value)}
-                      className="w-full bg-navy-700 border border-navy-600 rounded px-2 py-1.5 text-sm text-white">
-                      <option value="">— Selecione —</option>
-                      {eventsAllPlayers.filter(p => p.teamId === newEvtTeam).map(p => (
-                        <option key={p.id} value={p.id}>{p.jersey_number ? `${p.jersey_number} - ` : ''}{p.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
+                <div>
+                  <label className="text-xs text-slate-400 mb-1 block">
+                    Jogador {newEvtType === 'own_goal' && <span className="text-slate-500">(quem fez o gol contra)</span>}
+                  </label>
+                  <select value={newEvtPlayer} onChange={ev => setNewEvtPlayer(ev.target.value)}
+                    className="w-full bg-navy-700 border border-navy-600 rounded px-2 py-1.5 text-sm text-white">
+                    <option value="">— {newEvtType === 'own_goal' ? 'Sem atribuição' : 'Selecione'} —</option>
+                    {eventsAllPlayers.filter(p => p.teamId === newEvtTeam).map(p => (
+                      <option key={p.id} value={p.id}>{p.jersey_number ? `${p.jersey_number} - ` : ''}{p.name}</option>
+                    ))}
+                  </select>
+                </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className="text-xs text-slate-400 mb-1 block">Minuto</label>
